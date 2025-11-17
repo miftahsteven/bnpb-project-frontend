@@ -16,7 +16,7 @@ const nextConfig = {
     transpilePackages: ["maplibre-gl"],
 
     // ✅ Nonaktifkan turbopack sepenuhnya
-    turbopack: false,
+    //turbopack: false,
 };
 
 export default nextConfig;
