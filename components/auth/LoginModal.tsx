@@ -3,9 +3,15 @@
 import { useState } from 'react'
 //import { useAuth } from '@/app/AuthContext'
 import { useAuth } from '@/hooks/useAuth';
+type LoginModalProps = {
+    open?: boolean;
+    onClose?: () => void;
+};
 
-
-export default function LoginModal({ open, onClose }: { open: boolean, onClose: () => void }) {
+export default function LoginModal({
+    open = true,
+    onClose = () => { },
+}: LoginModalProps) {
     const { login, loginFromResponse, setLoginModalOpen } = useAuth();
     const [username, setUser] = useState("")
     const [password, setPass] = useState("")
