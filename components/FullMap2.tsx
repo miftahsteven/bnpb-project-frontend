@@ -6,7 +6,6 @@ import { Filter, X, Loader2, Menu } from 'lucide-react'
 import { useProvinces } from '@/hooks/useCascadingLocations'
 import { useRambu, toGeoJSON } from '@/hooks/useRambu'
 import { useProvinceGeom } from '@/hooks/useProvinceGeom' // <- dipakai untuk bbox saja
-import { useSimRambu } from "@/hooks/useSimRambu";
 // ========================
 // KONSTANTA
 // ========================
@@ -21,10 +20,8 @@ const COLOR_BY_DISASTER: Record<number, string> = {
     1: '#ef4444',
     2: '#f59e0b',
     3: '#22c55e',
-    4: '#ff0a43',
+    4: '#3b82f6',
 }
-
-const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || 'BSMSxOeDudgubp5q2uYq'
 
 const HIGHLIGHT_COLOR = '#f97316' // oranye
 
@@ -57,8 +54,6 @@ export default function FullMap() {
     const [pendingProvStr, setPendingProvStr] = useState<string>('')
     const [activeProvId, setActiveProvId] = useState<number | undefined>(undefined)
     const [refreshSeq, setRefreshSeq] = useState(0) // <- paksa refresh zoom walau prov tidak berubah
-    const { points: simPoints, addPoint: addSimPoint } = useSimRambu();
-
 
     // data
     const { data: provinces } = useProvinces()
@@ -136,276 +131,209 @@ export default function FullMap() {
 
     // INIT MAP (tanpa layer geom)
     useEffect(() => {
-        let alive = true;
-        (async () => {
-            if (!containerRef.current) return;
-            const maplibregl = (await import("maplibre-gl")).default;
+        let alive = true
+            ; (async () => {
+                if (!containerRef.current) return
+                const maplibregl = (await import('maplibre-gl')).default
+                const styleUrl = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+                const fallbackStyle = 'https://demotiles.maplibre.org/style.json'
 
-            //const styleUrl = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
-            const styleUrl = `https://api.maptiler.com/maps/streets-v4/style.json?key=${MAPTILER_KEY}`;
-            const fallbackStyle = "https://demotiles.maplibre.org/style.json";
+                const map = new maplibregl.Map({
+                    container: containerRef.current!,
+                    style: styleUrl,
+                    center: [117.5, -2.5],
+                    zoom: 4,
+                })
+                mapRef.current = map
 
-            // const map = new maplibregl.Map({
-            //     container: containerRef.current!,
-            //     style: styleUrl,
-            //     center: [117.5, -2.5],
-            //     zoom: 4,
-            //     //antialias: true, // OK in Map options
-            // });
-            const map = new maplibregl.Map({
-                container: containerRef.current!,
-                style: styleUrl,
-                center: [117.5, -2.5],
-                zoom: 4,
-                //antialias: true,     // opsi untuk render lebih halus
-                pitchWithRotate: false,
-                attributionControl: false,  // kita bisa custom control
-            });
-            mapRef.current = map;
+                map.on('error', (e: any) => {
+                    const msg = String(e?.error || '')
+                    if (msg.includes('style') || msg.includes('Failed') || msg.includes('Network')) {
+                        try {
+                            ; (map as any).setStyle(fallbackStyle)
+                        } catch { }
+                    }
+                })
 
-            map.on("error", (e: any) => {
-                const msg = String(e?.error || "");
-                if (msg.includes("style") || msg.includes("Failed") || msg.includes("Network")) {
-                    try { (map as any).setStyle(fallbackStyle); } catch { }
-                }
-            });
+                map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right')
 
-            map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+                map.on('load', () => {
+                    if (!alive) return
 
-            map.on("load", () => {
-                if (!alive) return;
-
-                // const img = new Image();
-                // img.crossOrigin = "anonymous";
-                // img.src = "/images/EVAKUASIKANAN.png";
-
-                // img.onload = () => {
-                //     try {
-                //         if (!map.hasImage("icon-evakuasi")) {
-                //             map.addImage("icon-evakuasi", img);
-                //         }
-                //     } catch (e) {
-                //         console.error("Gagal addImage:", e);
-                //     }
-                // };
-
-                // img.onerror = (e) => {
-                //     console.error("Gagal load icon PNG:", e);
-                // };
-
-                // Subtle atmosphere (safe on Positron)
-                // try {
-                //     map.setFog({
-                //         range: [0.5, 8],
-                //         color: "rgba(245,248,250,0.6)",
-                //         "horizon-blend": 0.03,
-                //     } as any);
-                // } catch { }
-
-                // ===============================
-                // Source & layers: RAMBU (cluster)
-                // ===============================
-                if (!map.getSource("rambu")) {
-                    map.addSource("rambu", {
-                        type: "geojson",
-                        data: rambuFC as any,
-                        cluster: true,
-                        clusterMaxZoom: 11,
-                        clusterRadius: 40,
-                    });
-                }
-
-                if (!map.getLayer("rambu-clusters")) {
-                    map.addLayer({
-                        id: "rambu-clusters",
-                        type: "circle",
-                        source: "rambu",
-                        filter: ["has", "point_count"],
-                        paint: {
-                            "circle-color": [
-                                "step",
-                                ["get", "point_count"],
-                                "#fa053e",  //diganti
-                                20, "#42a5f5",
-                                50, "#1e88e5",
-                                100, BRAND_BLUE
-                            ],
-                            "circle-radius": ["step", ["get", "point_count"], 14, 20, 18, 50, 24, 100, 32],
-                            "circle-stroke-width": 1,
-                            "circle-stroke-color": "#fff",
-                        },
-                    });
-                }
-
-                if (!map.getLayer("rambu-cluster-count")) {
-                    map.addLayer({
-                        id: "rambu-cluster-count",
-                        type: "symbol",
-                        source: "rambu",
-                        filter: ["has", "point_count"],
-                        layout: {
-                            "text-field": ["get", "point_count_abbreviated"],
-                            "text-size": 12,
-                        },
-                        paint: { "text-color": "#001b44" },
-                    });
-                }
-
-                if (!map.getLayer("rambu-unclustered")) {
-                    map.addLayer({
-                        id: "rambu-unclustered",
-                        // type: "circle",
-                        type: "circle",
-                        source: "rambu",
-                        filter: ["!", ["has", "point_count"]],
-                        paint: {
-                            "circle-color": [
-                                "coalesce",
-                                [
-                                    "case",
-                                    ["==", ["typeof", ["get", "disasterTypeId"]], "number"],
-                                    [
-                                        "match",
-                                        ["get", "disasterTypeId"],
-                                        1, COLOR_BY_DISASTER[1],
-                                        2, COLOR_BY_DISASTER[2],
-                                        3, COLOR_BY_DISASTER[3],
-                                        4, COLOR_BY_DISASTER[4],
-                                        DEFAULT_COLOR
-                                    ],
-                                    DEFAULT_COLOR
+                    // source & layers: rambu (cluster + unclustered)
+                    if (!map.getSource('rambu')) {
+                        map.addSource('rambu', {
+                            type: 'geojson',
+                            data: rambuFC as any,
+                            cluster: true,
+                            clusterMaxZoom: 11,
+                            clusterRadius: 40,
+                        })
+                    }
+                    if (!map.getLayer('rambu-clusters')) {
+                        map.addLayer({
+                            id: 'rambu-clusters',
+                            type: 'circle',
+                            source: 'rambu',
+                            filter: ['has', 'point_count'],
+                            paint: {
+                                'circle-color': [
+                                    'step',
+                                    ['get', 'point_count'],
+                                    '#90caf9',
+                                    20,
+                                    '#42a5f5',
+                                    50,
+                                    '#1e88e5',
+                                    100,
+                                    BRAND_BLUE,
                                 ],
-                                DEFAULT_COLOR
-                            ],
-                            "circle-radius": 7,
-                            "circle-stroke-width": 1.5,
-                            "circle-stroke-color": "#fff",
+                                'circle-radius': ['step', ['get', 'point_count'], 14, 20, 18, 50, 24, 100, 32],
+                                'circle-stroke-width': 1,
+                                'circle-stroke-color': '#fff',
+                            },
+                        })
+                    }
+                    if (!map.getLayer('rambu-cluster-count')) {
+                        map.addLayer({
+                            id: 'rambu-cluster-count',
+                            type: 'symbol',
+                            source: 'rambu',
+                            filter: ['has', 'point_count'],
+                            layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 12 },
+                            paint: { 'text-color': '#001b44' },
+                        })
+                    }
+                    if (!map.getLayer('rambu-unclustered')) {
+                        map.addLayer({
+                            id: 'rambu-unclustered',
+                            type: 'circle',
+                            source: 'rambu',
+                            filter: ['!', ['has', 'point_count']],
+                            paint: {
+                                'circle-color': [
+                                    'coalesce',
+                                    [
+                                        'case',
+                                        ['==', ['typeof', ['get', 'disasterTypeId']], 'number'],
+                                        [
+                                            'match',
+                                            ['get', 'disasterTypeId'],
+                                            1,
+                                            COLOR_BY_DISASTER[1],
+                                            2,
+                                            COLOR_BY_DISASTER[2],
+                                            3,
+                                            COLOR_BY_DISASTER[3],
+                                            4,
+                                            COLOR_BY_DISASTER[4],
+                                            DEFAULT_COLOR,
+                                        ],
+                                        DEFAULT_COLOR,
+                                    ],
+                                    DEFAULT_COLOR,
+                                ],
+                                'circle-radius': 7,
+                                'circle-stroke-width': 1.5,
+                                'circle-stroke-color': '#fff',
+                            },
+                        })
+                    }
+
+                    // popup & cluster expansion
+                    map.on('click', 'rambu-unclustered', (e: any) => {
+                        const f = e.features?.[0]
+                        if (!f) return
+                        const p = f.properties as any
+                        new maplibregl.Popup({ offset: 12 })
+                            .setLngLat((f.geometry as any).coordinates as [number, number])
+                            .setHTML(
+                                `<div style="min-width:220px">
+                <div style="font-weight:600;margin-bottom:4px">${p.name ?? 'Rambu'}</div>
+                ${p.description ? `<div style="font-size:12px;color:#555">${p.description}</div>` : ''}
+                ${p.image ? `<div style="margin-top:8px"><img src="${p.image}" alt="foto" style="width:100%;height:auto;border-radius:6px;"/></div>` : ''}
+              </div>`
+                            )
+                            .addTo(map)
+                    })
+                    map.on('click', 'rambu-clusters', (e: any) => {
+                        const feats = map.queryRenderedFeatures(e.point, { layers: ['rambu-clusters'] })
+                        const clusterId = feats[0]?.properties?.cluster_id
+                        const src = map.getSource('rambu') as any
+                        src.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+                            if (err) return
+                            map.easeTo({ center: (feats[0].geometry as any).coordinates, zoom })
+                        })
+                    })
+
+                    // Source & layers: highlight provinsi terpilih
+                    if (!map.getSource('prov-geom')) {
+                        map.addSource('prov-geom', {
+                            type: 'geojson',
+                            data: { type: 'FeatureCollection', features: [] } as any,
+                        })
+                    }
+                    if (!map.getLayer('prov-highlight-fill')) {
+                        const beforeId = map.getLayer('rambu-clusters') ? 'rambu-clusters' : undefined
+                        map.addLayer({
+                            id: 'prov-highlight-fill',
+                            type: 'fill',
+                            source: 'prov-geom',
+                            paint: {
+                                'fill-color': HIGHLIGHT_COLOR,
+                                'fill-opacity': 0.28,
+                            },
+                        }
+                            , beforeId)
+                    }
+                    if (!map.getLayer('prov-highlight-outline')) {
+                        const beforeId = map.getLayer('rambu-clusters') ? 'rambu-clusters' : undefined
+                        map.addLayer({
+                            id: 'prov-highlight-outline',
+                            type: 'line',
+                            source: 'prov-geom',
+                            paint: {
+                                'line-color': HIGHLIGHT_COLOR,
+                                'line-width': 2,
+                            },
                         },
-                    });
+                            beforeId)
+                    }
+
+                    const ensureOrder = () => {
+                        try {
+                            // Pastikan fill & outline di bawah rambu
+                            if (map.getLayer('prov-highlight-fill') && map.getLayer('rambu-clusters')) {
+                                map.moveLayer('prov-highlight-fill', 'rambu-clusters')
+                            }
+                            if (map.getLayer('prov-highlight-outline') && map.getLayer('rambu-clusters')) {
+                                map.moveLayer('prov-highlight-outline', 'rambu-clusters')
+                            }
+                        } catch { }
+                    }
+                    ensureOrder()
+
+                    // view awal Indonesia
+                    map.fitBounds(IDN_BOUNDS, { padding: 40, duration: 600, maxZoom: 7.5 })
+                })
+
+                const ro = new ResizeObserver(() => {
+                    try {
+                        map.resize()
+                    } catch { }
+                })
+                ro.observe(containerRef.current!)
+
+                return () => {
+                    alive = false
+                    ro.disconnect()
+                    try {
+                        map.remove()
+                    } catch { }
+                    mapRef.current = null
                 }
-
-                // if (!map.getLayer("rambu-icons")) {
-                //     map.addLayer({
-                //         id: "rambu-icons",
-                //         type: "symbol",
-                //         source: "rambu",
-                //         filter: ["!", ["has", "point_count"]],
-                //         layout: {
-                //             "icon-image": "icon-evakuasi",
-                //             "icon-size": 0.040,
-                //             "icon-anchor": "bottom",
-                //             "icon-allow-overlap": true
-                //         }
-                //     });
-                // }
-                // if (map.getLayer("rambu-unclustered")) {
-                //     map.setLayoutProperty("rambu-unclustered", "visibility", "none");
-                // }
-
-                // Popups & cluster zoom
-                map.on("click", "rambu-unclustered", (e: any) => {
-                    const f = e.features?.[0]; if (!f) return;
-                    const p = f.properties as any;
-                    const coord = (f.geometry as any).coordinates as [number, number];
-                    new maplibregl.Popup({ offset: 12 })
-                        .setLngLat(coord)
-                        .setHTML(`
-                  <div style="min-width:220px">
-                    <div style="font-weight:600;margin-bottom:4px">${p.name ?? "Rambu"}</div>
-                    ${p.description ? `<div style="font-size:12px;color:#555">${p.description}</div>` : ""}
-                    ${p.image ? `<div style="margin-top:8px"><img src="${p.image}" alt="foto" style="width:100%;height:auto;border-radius:6px;"/></div>` : ""}
-                  </div>
-                `)
-                        .addTo(map);
-                });
-
-                map.on("click", "rambu-clusters", (e: any) => {
-                    const feats = map.queryRenderedFeatures(e.point, { layers: ["rambu-clusters"] });
-                    const f0 = feats[0] as any;
-                    const clusterId = f0?.properties?.cluster_id;
-                    const src = map.getSource("rambu") as any;
-                    if (!clusterId || !src?.getClusterExpansionZoom) return;
-                    src.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
-                        if (err) return;
-                        const ctr = (f0.geometry as any).coordinates as [number, number];
-                        map.easeTo({ center: ctr, zoom });
-                    });
-                });
-
-                // ===============================
-                // OPTIONAL: prov-geom for highlight (kept empty by default)
-                // ===============================
-                if (!map.getSource("prov-geom")) {
-                    map.addSource("prov-geom", { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
-                }
-                if (!map.getLayer("prov-highlight-fill")) {
-                    map.addLayer({
-                        id: "prov-highlight-fill",
-                        type: "fill",
-                        source: "prov-geom",
-                        paint: { "fill-color": "#004AAD", "fill-opacity": 0.18 },
-                    });
-                }
-                if (!map.getLayer("prov-highlight-outline")) {
-                    map.addLayer({
-                        id: "prov-highlight-outline",
-                        type: "line",
-                        source: "prov-geom",
-                        paint: { "line-color": "#004AAD", "line-width": 2 },
-                    });
-                }
-
-                map.on("click", (e: any) => {
-                    const { lng, lat } = e.lngLat;
-                    console.log("Tambah titik simulasi:", lng, lat);
-                    addSimPoint(lng, lat);
-                });
-
-                // SOURCE simulasi
-                if (!map.getSource("sim-rambu")) {
-                    map.addSource("sim-rambu", {
-                        type: "geojson",
-                        data: {
-                            type: "FeatureCollection",
-                            features: []
-                        }
-                    });
-                }
-
-                // LAYER titik simulasi
-                if (!map.getLayer("sim-rambu-points")) {
-                    map.addLayer({
-                        id: "sim-rambu-points",
-                        type: "circle",
-                        source: "sim-rambu",
-                        paint: {
-                            "circle-color": "#10b981",
-                            "circle-radius": 8,
-                            "circle-stroke-width": 2,
-                            "circle-stroke-color": "#ffffff"
-                        }
-                    });
-                }
-
-
-                // Initial view
-                map.fitBounds(IDN_BOUNDS as any, { padding: 40, duration: 600, maxZoom: 7.5 });
-            });
-
-            const ro = new ResizeObserver(() => {
-                try { map.resize(); } catch { }
-            });
-            ro.observe(containerRef.current!);
-
-            return () => {
-                alive = false;
-                ro.disconnect();
-                try { map.remove(); } catch { }
-                mapRef.current = null;
-            };
-        })();
-    }, []);
-
+            })()
+    }, [])
 
     // Update data rambu di source
     useEffect(() => {
@@ -419,30 +347,6 @@ export default function FullMap() {
             'count(all)=', rambuData?.length ?? 0,
             'count(filtered)=', rambuFiltered?.length ?? 0)
     }, [rambuFC, activeProvId, normalizedProvGeom, rambuData, rambuFiltered])
-
-    useEffect(() => {
-        const map = mapRef.current;
-        if (!map?.isStyleLoaded?.()) return;
-
-        const src = map.getSource("sim-rambu") as any;
-        if (!src) return;
-
-        src.setData({
-            type: "FeatureCollection",
-            features: simPoints.map((p) => ({
-                type: "Feature",
-                geometry: {
-                    type: "Point",
-                    coordinates: [p.lng, p.lat],
-                },
-                properties: {
-                    id: p.id,
-                    createdAt: p.createdAt,
-                },
-            })),
-        });
-    }, [simPoints]);
-
 
     // === ZOOM LOGIC: dipanggil tiap klik "Tampilkan" atau data siap
     // Urutan:

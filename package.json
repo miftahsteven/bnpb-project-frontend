@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -12,13 +12,19 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@tanstack/react-table": "^8.21.3",
     "@turf/turf": "latest",
+    "axios": "^1.13.2",
     "clsx": "latest",
     "lucide-react": "latest",
-    "maplibre-gl": "latest",
+    "maplibre-gl": "^5.11.0",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-hook-form": "^7.66.0",
+    "swr": "^2.3.6",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.16",
