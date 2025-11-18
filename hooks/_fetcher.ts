@@ -1,6 +1,6 @@
 // hooks/_fetcher.ts
 export const API_BASE =
-    process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, '') || 'http://localhost:4000';
+    process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, '') || 'https://api-mrb.suppydata.id';
 
 export async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
     const sep = path.includes('?') ? '&' : '?';

@@ -33,7 +33,7 @@ export default function UsersTable() {
 
     const [detailItem, setDetailItem] = useState<UserItem | null>(null);
 
-    const BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+    const BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "https://api-mrb.suppydata.id";
 
     async function load() {
         setLoading(true);

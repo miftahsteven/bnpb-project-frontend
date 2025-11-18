@@ -25,7 +25,7 @@ export function useRambuCrud(options: UseRambuCrudOptions = {}) {
     // ✅ BASE URL dari ENV
     const API_BASE =
         process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ||
-        "http://localhost:4000/api"; // fallback aman
+        "https://api-mrb.suppydata.id/api";
 
     const {
         page = 1,

@@ -1,7 +1,7 @@
 // app/api/rambu/route.ts
 import { NextResponse } from "next/server";
 
-const BASE_URL = "http://localhost:4000/api/rambu";
+const BASE_URL = "https://api-mrb.suppydata.id/api/rambu";
 
 export async function GET(req: Request) {
     try {

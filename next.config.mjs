@@ -3,7 +3,7 @@ const nextConfig = {
     // ✅ PAKSA WEBPACK, MATIKAN TURBOPACK
     experimental: {
         serverActions: {
-            allowedOrigins: ["mrb.supplydata.id"]
+            allowedOrigins: ["api-mrb.supplydata.id"]
         },
     },
 
