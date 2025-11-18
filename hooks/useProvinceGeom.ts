@@ -6,7 +6,7 @@ type GeomData = any
 // Gunakan ENV agar fleksibel jika nanti backend pindah server
 const BASE_URL =
     process.env.NEXT_PUBLIC_BACKEND_URL ||
-    'https://api-mrb.suppydata.id/api'
+    'https://api-mrb.supplydata.id/api';
 
 export function useProvinceGeom(provId?: number, dep?: number) {
     const [data, setData] = useState<GeomData | null>(null)

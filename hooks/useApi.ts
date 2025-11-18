@@ -1,4 +1,4 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://api-mrb.suppydata.id';
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://api-mrb.supplydata.id';
 
 export async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
     const res = await fetch(url, { ...init, cache: 'no-store' })

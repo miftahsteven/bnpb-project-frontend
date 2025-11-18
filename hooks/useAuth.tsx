@@ -32,7 +32,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api-mrb.suppydata.id";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api-mrb.supplydata.id";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<AuthUser | null>(null);

@@ -24,7 +24,7 @@ export default function LoginModal({
         e.preventDefault()
         setError("")
 
-        const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api-mrb.suppydata.id";
+        const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api-mrb.supplydata.id";
 
         try {
             const res = await fetch(`${API_BASE}/api/users/login`, {
