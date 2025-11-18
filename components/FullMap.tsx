@@ -141,6 +141,12 @@ export default function FullMap() {
             if (!containerRef.current) return;
             const maplibregl = (await import("maplibre-gl")).default;
 
+            if (typeof window !== "undefined") {
+                // alias global untuk plugin / script yang mengharapkan `maplibre`
+                (window as any).maplibre = maplibregl;
+                (window as any).maplibregl = maplibregl; // sekalian pastikan global ini juga ada
+            }
+
             //const styleUrl = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
             const styleUrl = `https://api.maptiler.com/maps/streets-v4/style.json?key=${MAPTILER_KEY}`;
             const fallbackStyle = "https://demotiles.maplibre.org/style.json";

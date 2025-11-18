@@ -7,13 +7,13 @@ const nextConfig = {
         },
     },
 
-    webpack(config) {
-        config.externals = [...(config.externals || []), "maplibre-gl"];
-        return config;
-    },
+    // webpack(config) {
+    //     config.externals = [...(config.externals || []), "maplibre-gl"];
+    //     return config;
+    // },
 
     // ✅ TRIK WAJIB AGAR CSS MAPLIBRE BISA DIIMPORT
-    transpilePackages: ["maplibre-gl"],
+    //transpilePackages: ["maplibre-gl"],
 
     // ✅ Nonaktifkan turbopack sepenuhnya
     turbopack: false,
