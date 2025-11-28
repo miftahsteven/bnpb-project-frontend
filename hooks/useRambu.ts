@@ -51,6 +51,14 @@ type UseRambuOptions = {
     enabled?: boolean
     fetchAllWhenUndefined?: boolean
     forceAll?: boolean // jika true selalu ambil semua meski provinceId ada (untuk filter di klien)
+    // OPTIONAL FILTERS (server-side)
+    cityId?: number
+    districtId?: number
+    subdistrictId?: number
+    categoryId?: number
+    disasterTypeId?: number
+    modelId?: number
+    year?: number
 }
 
 export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
@@ -58,15 +66,65 @@ export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
     const fetchAll = opts.fetchAllWhenUndefined ?? true
     const forceAll = opts.forceAll ?? false
 
+    console.log('useRambu', { provinceId, enabled, fetchAll, forceAll });
+
+
+    // Bangun query params (kirim camelCase dan snake_case untuk kompatibilitas API)
+    const qs = new URLSearchParams()
+    const addBoth = (camel: string, snake: string, val?: number) => {
+        if (val == null) return
+        qs.set(camel, String(val))
+        qs.set(snake, String(val))
+    }
+    addBoth('provinceId', 'prov_id', provinceId)
+    addBoth('cityId', 'city_id', opts.cityId)
+    addBoth('districtId', 'district_id', opts.districtId)
+    addBoth('subdistrictId', 'subdistrict_id', opts.subdistrictId)
+    addBoth('categoryId', 'category_id', opts.categoryId)
+    addBoth('disasterTypeId', 'disaster_type_id', opts.disasterTypeId)
+    addBoth('modelId', 'model_id', opts.modelId)
+
+    if (opts.year != null) {
+        qs.set('year', String(opts.year))
+        qs.set('tahun', String(opts.year))
+    }
+
+    const qstr = qs.toString()
+    const withQuery = (base: string) => (qstr ? `${base}?${qstr}` : base)
+
+
+    // const path =
+    //     forceAll
+    //         ? '/api/rambu'
+    //         : provinceId != null
+    //             ? `/api/rambu?provinceId=${provinceId}`
+    //             : fetchAll
+    //                 ? '/api/rambu'
+    //                 : null
+    // const path =
+    //     forceAll
+    //         ? withQuery('/api/rambu')
+    //         : (provinceId != null || qstr)
+    //             ? withQuery('/api/rambu')
+    //             : fetchAll
+    //                 ? '/api/rambu'
+    //                 : null
+
     const path =
         forceAll
-            ? '/api/rambu'
-            : provinceId != null
-                ? `/api/rambu?provinceId=${provinceId}`
+            ? withQuery('/api/rambu')
+            : (provinceId != null || qstr)
+                ? withQuery('/api/rambu')
                 : fetchAll
                     ? '/api/rambu'
                     : null
 
+
+    if (path) {
+        const BASE = (process.env.NEXT_PUBLIC_API_BASE || API_BASE || '').replace(/\/+$/, '')
+        const absUrl = path.startsWith('http') ? path : `${BASE}${path.startsWith('/') ? '' : '/'}${path}`
+        console.debug('[useRambu] GET:', absUrl)
+    }
     const swr = useSWR<Rambu[]>(enabled && path ? path : null, fetcher, {
         revalidateOnFocus: false,
     })

@@ -101,7 +101,7 @@ export default function RambuTable() {
                         <thead>
                             <tr className="bg-slate-50 text-slate-600 text-[13px] uppercase tracking-wide">
                                 <th className="text-left px-4 py-3 border-b">Nama & Deskripsi</th>
-                                <th className="text-left px-4 py-3 border-b">Kategori</th>
+                                {/* <th className="text-left px-4 py-3 border-b">Kategori</th> */}
                                 <th className="text-left px-4 py-3 border-b">Tipe Bencana</th>
                                 <th className="text-left px-4 py-3 border-b">Provinsi</th>
                                 <th className="text-left px-4 py-3 border-b">Kota/Kab.</th>
@@ -132,17 +132,17 @@ export default function RambuTable() {
                                     >
                                         {/* Nama & deskripsi (alamat) sebagai subtitle */}
                                         <td className="px-4 py-3 align-top">
-                                            <div className="font-medium text-slate-800">{row.name}</div>
+                                            <div className="font-medium text-slate-800">{row.categoryName}</div>
                                             <div className="text-[12px] text-slate-500 mt-1 line-clamp-2">
                                                 {row.description || "-"}
                                             </div>
                                         </td>
 
-                                        <td className="px-4 py-3 align-top">
+                                        {/* <td className="px-4 py-3 align-top">
                                             <span className="text-sm text-slate-700">
                                                 {row.categoryName || "-"}
                                             </span>
-                                        </td>
+                                        </td> */}
 
                                         <td className="px-4 py-3 align-top">
                                             <span className="text-sm text-slate-700">

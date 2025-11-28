@@ -1,7 +1,8 @@
 // app/api/rambu/route.ts
 import { NextResponse } from "next/server";
 
-const BASE_URL = "https://api-mrb.supplydata.id/api/rambu";
+//const BASE_URL = "https://api-mrb.supplydata.id/api/rambu";
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "https://api-mrb.supplydata.id/api/rambu";
 
 export async function GET(req: Request) {
     try {

@@ -11,3 +11,9 @@ export function useCategories() {
 export function useDisasterTypes() {
     return useFetch<Option[]>('/ref/disaster-types', () => apiGet('/api/ref/disaster-types'))
 }
+export function useModels() {
+    return useFetch<Option[]>('/ref/model', () => apiGet('/api/ref/model'))
+}
+export function useCostSources() {
+    return useFetch<Option[]>('/ref/costsource', () => apiGet('/api/ref/costsource'))
+}   

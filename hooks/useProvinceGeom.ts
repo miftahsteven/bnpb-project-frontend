@@ -5,7 +5,7 @@ type GeomData = any
 
 // Gunakan ENV agar fleksibel jika nanti backend pindah server
 const BASE_URL =
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
     'https://api-mrb.supplydata.id/api';
 
 export function useProvinceGeom(provId?: number, dep?: number) {

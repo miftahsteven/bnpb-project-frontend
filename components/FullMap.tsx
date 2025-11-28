@@ -1,12 +1,20 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import * as turf from '@turf/turf'
 import { Filter, X, Loader2, Menu } from 'lucide-react'
-import { useProvinces } from '@/hooks/useCascadingLocations'
 import { useRambu, toGeoJSON } from '@/hooks/useRambu'
 import { useProvinceGeom } from '@/hooks/useProvinceGeom' // <- dipakai untuk bbox saja
 import { useSimRambu } from "@/hooks/useSimRambu";
+import { useCategories, useDisasterTypes, useModels, useCostSources } from '@/hooks/useOptions'
+import { useAuth } from '@/hooks/useAuth'
+import { is } from 'zod/locales'
+import {
+    useProvinces,
+    useCities,
+    useDistricts,
+    useSubdistricts,
+} from '@/hooks/useCascadingLocations'
 // ========================
 // KONSTANTA
 // ========================
@@ -27,6 +35,12 @@ const COLOR_BY_DISASTER: Record<number, string> = {
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || 'BSMSxOeDudgubp5q2uYq'
 
 const HIGHLIGHT_COLOR = '#f97316' // oranye
+
+type PointFeature = {
+    type: 'Feature'
+    geometry: { type: 'Point'; coordinates: [number, number] }
+    properties: any
+}
 
 
 // helper: normalisasi GeoJSON dari API untuk dipakai bbox (tanpa render)
@@ -55,35 +69,534 @@ export default function FullMap() {
     const [panelOpen, setPanelOpen] = useState(false)
     const [drawerOpen, setDrawerOpen] = useState(true)
     const [pendingProvStr, setPendingProvStr] = useState<string>('')
+    const [pendingCityStr, setPendingCityStr] = useState<string>('')
+    const [pendingDistrictStr, setPendingDistrictStr] = useState<string>('')
+    const [pendingSubdistrictStr, setPendingSubdistrictStr] = useState<string>('')
+
+    const [activeCityId, setActiveCityId] = useState<number | undefined>(undefined)
+    const [activeDistrictId, setActiveDistrictId] = useState<number | undefined>(undefined)
+    const [activeSubdistrictId, setActiveSubdistrictId] = useState<number | undefined>(undefined)
+
+    // Filter tambahan: kategori, jenis bencana, model rambu
+    const [pendingCategoryStr, setPendingCategoryStr] = useState<string>('')
+    const [pendingDisasterStr, setPendingDisasterStr] = useState<string>('')
+    const [pendingModelStr, setPendingModelStr] = useState<string>('')
+    const [pendingYearStr, setPendingYearStr] = useState<string>('')
+
+
+    const [activeCategoryId, setActiveCategoryId] = useState<number | undefined>(undefined)
+    const [activeDisasterId, setActiveDisasterId] = useState<number | undefined>(undefined)
+    const [activeModelId, setActiveModelId] = useState<number | undefined>(undefined)
+
+    // ================= Derivasi data cascading UNTUK FILTER (beda dari simulasi) =================
+    const filterProvNum = pendingProvStr ? Number(pendingProvStr) : undefined
+    const filterCityNum = pendingCityStr ? Number(pendingCityStr) : undefined
+    const filterDistrictNum = pendingDistrictStr ? Number(pendingDistrictStr) : undefined
+
+    const { data: filterCities } = useCities(filterProvNum)
+    const { data: filterDists } = useDistricts(filterCityNum)
+    const { data: filterSubs } = useSubdistricts(filterDistrictNum)
+
     const [activeProvId, setActiveProvId] = useState<number | undefined>(undefined)
     const [refreshSeq, setRefreshSeq] = useState(0) // <- paksa refresh zoom walau prov tidak berubah
     const { points: simPoints, addPoint: addSimPoint } = useSimRambu();
+    const { token } = useAuth()
+    const user = useAuth().user;
+    const { data: models } = useModels()
+    const { data: disasters } = useDisasterTypes()
+    const { data: costSources } = useCostSources()
+    const { data: categories } = useCategories()
+    const simPopupRef = useRef<any>(null)
+    const geoReqSeqRef = useRef(0)
+    const simClickIdRef = useRef<string>('sim-click') // id source marker klik
 
+    const [simPoint, setSimPoint] = useState<{ lat: number; lng: number } | null>(null)
+    const [simGeo, setSimGeo] = useState<{
+        province?: string
+        city?: string
+        district?: string
+        village?: string
+        provinceId?: number
+        cityId?: number
+        districtId?: number
+        subdistrictId?: number
+    } | null>(null)
+    const [simOpen, setSimOpen] = useState(false)
+    const [simLoading, setSimLoading] = useState(false)
+    const [simErr, setSimErr] = useState<string | null>(null)
+    const [simSaving, setSimSaving] = useState(false)
+
+    const [simProvId, setSimProvId] = useState<string>('')
+    const [simCityId, setSimCityId] = useState<string>('')
+    const [simDistrictId, setSimDistrictId] = useState<string>('')
+    const [simSubdistrictId, setSimSubdistrictId] = useState<string>('')
+
+    const simProvNum = simProvId ? Number(simProvId) : undefined
+    const simCityNum = simCityId ? Number(simCityId) : undefined
+    const simDistrictNum = simDistrictId ? Number(simDistrictId) : undefined
+    const activeYear = useMemo(() => {
+        return pendingYearStr ? Number(pendingYearStr) : undefined
+    }, [pendingYearStr])
+
+
+    // Cascading referensi untuk form simulasi
+    const { data: provs } = useProvinces()
+    const { data: cities } = useCities(simProvNum)
+    const { data: dists } = useDistricts(simCityNum)
+    const { data: subs } = useSubdistricts(simDistrictNum)
+
+    // Reset anak ketika parent berubah
+    useEffect(() => { setSimCityId(''); setSimDistrictId(''); setSimSubdistrictId('') }, [simProvId])
+    useEffect(() => { setSimDistrictId(''); setSimSubdistrictId('') }, [simCityId])
+    useEffect(() => { setSimSubdistrictId('') }, [simDistrictId])
+    useEffect(() => {
+        setPendingCityStr('')
+        setPendingDistrictStr('')
+        setPendingSubdistrictStr('')
+    }, [pendingProvStr])
+    useEffect(() => {
+        setPendingDistrictStr('')
+        setPendingSubdistrictStr('')
+    }, [pendingCityStr])
+    useEffect(() => {
+        setPendingSubdistrictStr('')
+    }, [pendingDistrictStr])
+
+    useEffect(() => {
+        setActiveProvId(pendingProvStr ? Number(pendingProvStr) : undefined)
+    }, [pendingProvStr])
+    useEffect(() => {
+        setActiveCityId(pendingCityStr ? Number(pendingCityStr) : undefined)
+    }, [pendingCityStr])
+    useEffect(() => {
+        setActiveDistrictId(pendingDistrictStr ? Number(pendingDistrictStr) : undefined)
+    }, [pendingDistrictStr])
+    useEffect(() => {
+        setActiveSubdistrictId(pendingSubdistrictStr ? Number(pendingSubdistrictStr) : undefined)
+    }, [pendingSubdistrictStr])
+    useEffect(() => {
+        setActiveCategoryId(pendingCategoryStr ? Number(pendingCategoryStr) : undefined)
+    }, [pendingCategoryStr])
+    useEffect(() => {
+        setActiveDisasterId(pendingDisasterStr ? Number(pendingDisasterStr) : undefined)
+    }, [pendingDisasterStr])
+    useEffect(() => {
+        setActiveModelId(pendingModelStr ? Number(pendingModelStr) : undefined)
+    }, [pendingModelStr])
+
+
+    // Batas minimal zoom untuk boleh simulasi (maxZoom - 4)
+    const getSimMinZoom = () => {
+        const mz = mapRef.current?.getMaxZoom?.() ?? 22
+        return Math.max(10, mz - 4)
+    }
+    const canSimulate = () => {
+        const z = mapRef.current?.getZoom?.() ?? 0
+        return z >= getSimMinZoom()
+    }
 
     // data
     const { data: provinces } = useProvinces()
-    //const { data: rambu, loading: loadingRambu } = useRambu(activeProvId)
-    //const { data: rambuAll, loading: loadingRambu } = useRambu(undefined)
-    // const { data: rambuData, loading: loadingRambu, mutate: refetchRambu } = useRambu(
-    //     activeProvId,
-    //     { fetchAllWhenUndefined: true, forceAll: false }
-    // )
-    const {
-        data: rambuData,
-        loading: loadingRambu,
-        mutate: refetchRambu,
-        error: rambuError,
-    } = useRambu(undefined, { fetchAllWhenUndefined: true, forceAll: true })
 
-    //const rambuFC = useMemo(() => toGeoJSON(rambu), [rambu])
+    const { data: rambuData, loading: loadingRambu, error: rambuErr } = useRambu(
+        activeProvId,
+        {
+            // biarkan backend memfilter berdasar provinsi + kota jika dipilih
+            forceAll: false,
+            fetchAllWhenUndefined: true,
+            cityId: activeCityId, // fokus: filter kota
+            // siap jika nanti ingin tambahkan filter lain:
+            districtId: activeDistrictId,
+            subdistrictId: activeSubdistrictId,
+            categoryId: activeCategoryId,
+            disasterTypeId: activeDisasterId,
+            modelId: activeModelId,
+            year: activeYear,
+        }
+    )
 
-    // const rambuFiltered = useMemo(
-    //     () =>
-    //         activeProvId != null && rambuData && rambuData.length
-    //             ? rambuData.filter((f: any) => f.provinceId === activeProvId)
-    //             : rambuData,
-    //     [rambuData, activeProvId]
-    // )
+    //disini untuk simulation componen form rambu floatin
+
+    function renderSimPopupContent(point: { lat: number; lng: number }, geo: any, loading: boolean, err: string | null, canSim?: boolean) {
+        const minZoomTxt = getSimMinZoom(); // fix: define minZoomTxt
+        return `
+          <div style="font-size:11px;min-width:200px">
+            <div style="margin-bottom:4px;font-weight:600">Lokasi Terpilih</div>
+            <div>Lat: ${point.lat.toFixed(6)}<br/>Lng: ${point.lng.toFixed(6)}</div>
+            <hr style="margin:6px 0"/>
+            <div style="font-weight:600">Geografis</div>
+            ${err
+                ? `<div style="color:#b00020">${err}</div>`
+                : loading
+                    ? '<div style="color:#004AAD">Memuat…</div>'
+                    : geo
+                        ? `<div>
+                        Prov: ${geo.province || '-'}<br/>
+                        Kota: ${geo.city || '-'}<br/>
+                        Kec: ${geo.district || '-'}<br/>
+                        Desa: ${geo.village || '-'}
+                      </div>`
+                        : '<div>Belum tersedia</div>'
+            }
+            
+            <div style="margin-top:8px">
+                          ${canSim && user
+                ? `<a href="#" id="open-sim-form" style="color:#004AAD;text-decoration:underline;">tambah simulasi rambu disini</a>`
+                : `
+                     <div style="color:#64748b;margin-bottom:4px;">Perbesar peta untuk simulasi (min zoom ${minZoomTxt}).</div>
+                     <a href="#" id="open-sim-form" style="color:#004AAD;text-decoration:underline;opacity:.8">tambah simulasi rambu disini</a>
+                    `
+            }
+            </div>
+          </div>
+        `
+    }
+
+    function normName(s?: string) {
+        return (s || '')
+            .toLowerCase()
+            .replace(/^kabupaten\s+/i, '')
+            .replace(/^kota\s+/i, '')
+            .trim()
+    }
+
+    function waitFor<T>(fn: () => T | null, timeoutMs = 4000, intervalMs = 150): Promise<T | null> {
+        const start = Date.now()
+        return new Promise(resolve => {
+            const tick = () => {
+                const v = fn()
+                if (v) return resolve(v)
+                if (Date.now() - start > timeoutMs) return resolve(null)
+                setTimeout(tick, intervalMs)
+            }
+            tick()
+        })
+    }
+
+    const applySimGeografis = useCallback(async (geo: { province?: string; city?: string; district?: string; village?: string }) => {
+        // 1. Province
+        const provFound = provs?.find(p => normName(p.name) === normName(geo.province))
+        if (provFound) {
+            setSimProvId(String(provFound.id))
+        } else {
+            // Tidak ditemukan, hentikan
+            return
+        }
+        // 2. City (tunggu cities ter-load)
+        const cityList = await waitFor(() => (cities && cities.length ? cities : null))
+        const cityFound = cityList?.find((c: any) => normName(c.name) === normName(geo.city))
+        if (cityFound) {
+            setSimCityId(String(cityFound.id))
+        } else {
+            return
+        }
+        // 3. District
+        const distList = await waitFor(() => (dists && dists.length ? dists : null))
+        const distFound = distList?.find((d: any) => normName(d.name) === normName(geo.district))
+        if (distFound) {
+            setSimDistrictId(String(distFound.id))
+        } else {
+            return
+        }
+        // 4. Subdistrict
+        const subList = await waitFor(() => (subs && subs.length ? subs : null))
+        const subFound = subList?.find((s: any) => normName(s.name) === normName(geo.village))
+        if (subFound) {
+            setSimSubdistrictId(String(subFound.id))
+        }
+    }, [provs, cities, dists, subs])
+
+    const detectSimGeografis = useCallback(async () => {
+        if (!simPoint) return
+        try {
+            const base = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')
+            // Coba GET lalu fallback POST
+            let res = await fetch(`${base}/api/ref/geografis`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lat: simPoint.lat, long: simPoint.lng })
+            })
+            if (!res.ok) throw new Error(`Geografis gagal (${res.status})`)
+            const j = await res.json()
+            const g = j?.data
+            if (!g) throw new Error('Data geografis kosong')
+            const geoData = { province: g.province, city: g.city, district: g.district, village: g.village }
+            await applySimGeografis(geoData)
+        } catch (e) {
+            console.warn('[FullMap] detectSimGeografis gagal:', e)
+        }
+    }, [simPoint, applySimGeografis])
+
+    async function resolveGeoIds(geoData: { province?: string; city?: string; district?: string; village?: string }) {
+        const base = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')
+        const out: { provinceId?: number; cityId?: number; districtId?: number; subdistrictId?: number } = {}
+        try {
+            // 1. Province
+            if (geoData.province) {
+                const provRes = await fetch(`${base}/api/ref/provinces`)
+                if (provRes.ok) {
+                    const provList = await provRes.json()
+                    const provFound = provList?.data?.find((p: any) => normName(p.name) === normName(geoData.province))
+                    if (provFound) out.provinceId = provFound.id
+                }
+            }
+            // 2. City
+            if (out.provinceId && geoData.city) {
+                const cityRes = await fetch(`${base}/api/ref/cities?prov_id=${out.provinceId}`)
+                if (cityRes.ok) {
+                    const cityList = await cityRes.json()
+                    const cityFound = cityList?.data?.find((c: any) => normName(c.name) === normName(geoData.city))
+                    if (cityFound) out.cityId = cityFound.id
+                }
+            }
+            // 3. District
+            if (out.cityId && geoData.district) {
+                const distRes = await fetch(`${base}/api/ref/districts?city_id=${out.cityId}`)
+                if (distRes.ok) {
+                    const distList = await distRes.json()
+                    const distFound = distList?.data?.find((d: any) => normName(d.name) === normName(geoData.district))
+                    if (distFound) out.districtId = distFound.id
+                }
+            }
+            // 4. Subdistrict / Village
+            if (out.districtId && geoData.village) {
+                const subRes = await fetch(`${base}/api/ref/subdistricts?district_id=${out.districtId}`)
+                if (subRes.ok) {
+                    const subList = await subRes.json()
+                    const subFound = subList?.data?.find((s: any) => normName(s.name) === normName(geoData.village))
+                    if (subFound) out.subdistrictId = subFound.id
+                }
+            }
+        } catch (e) {
+            console.warn('[FullMap] resolveGeoIds gagal:', e)
+        }
+        return out
+    }
+
+    // async function fetchGeografis(lat: number, lng: number) {
+    //     setSimErr(null)
+    //     setSimLoading(true)
+    //     const seq = ++geoReqSeqRef.current
+    //     const pointCtx = { lat, lng }
+    //     const base = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')
+    //     // Coba GET (sesuai contoh response sebelumnya)
+    //     const urlGet = `${base}/api/ref/geografis?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`
+    //     try {
+    //         let res = await fetch(urlGet)
+    //         // Fallback POST (jaga-jaga backend pakai body)
+    //         if (!res.ok) {
+    //             res = await fetch(`${base}/api/ref/geografis`, {
+    //                 method: 'POST',
+    //                 headers: { 'Content-Type': 'application/json' },
+    //                 body: JSON.stringify({ lat, long: lng })
+    //             })
+    //         }
+    //         if (!res.ok) throw new Error(`Geografis gagal (${res.status})`)
+    //         const j = await res.json()
+    //         const g = j?.data
+    //         if (!g) throw new Error('Data geografis kosong')
+    //         const geoData = { province: g.province, city: g.city, district: g.district, village: g.village }
+    //         setSimGeo(geoData)
+    //         // Update popup langsung (hindari stuck "Memuat…")
+    //         if (geoReqSeqRef.current === seq && simPopupRef.current) {
+    //             //simPopupRef.current.setHTML(renderSimPopupContent(pointCtx, geoData, false, null))
+    //             simPopupRef.current.setHTML(
+    //                 renderSimPopupContent(pointCtx, geoData, false, null, canSimulate())
+    //             )
+    //             attachSimLinkListener()
+    //         }
+    //     } catch (e: any) {
+    //         const errMsg = e.message || 'Gagal deteksi geografis'
+    //         setSimErr(errMsg)
+    //         if (geoReqSeqRef.current === seq && simPopupRef.current) {
+    //             //simPopupRef.current.setHTML(renderSimPopupContent(pointCtx, null, false, errMsg))
+    //             simPopupRef.current.setHTML(
+    //                 renderSimPopupContent(pointCtx, null, false, errMsg, canSimulate())
+    //             )
+    //             attachSimLinkListener()
+    //         }
+    //     } finally {
+    //         setSimLoading(false)
+    //     }
+    // }
+
+    async function fetchGeografis(lat: number, lng: number) {
+        setSimErr(null)
+        setSimLoading(true)
+        const seq = ++geoReqSeqRef.current
+        const pointCtx = { lat, lng }
+        const base = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')
+        const urlGet = `${base}/api/ref/geografis?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`
+        try {
+            let res = await fetch(urlGet)
+            if (!res.ok) {
+                res = await fetch(`${base}/api/ref/geografis`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lat, long: lng })
+                })
+            }
+            if (!res.ok) throw new Error(`Geografis gagal (${res.status})`)
+            const j = await res.json()
+            const g = j?.data
+            if (!g) throw new Error('Data geografis kosong')
+            const geoData = { province: g.province, city: g.city, district: g.district, village: g.village }
+            // Dapatkan ID lokasi (jika tersedia di referensi)
+            const idData = await resolveGeoIds(geoData)
+            const fullGeo = { ...geoData, ...idData }
+            setSimGeo(fullGeo)
+            if (geoReqSeqRef.current === seq && simPopupRef.current) {
+                simPopupRef.current.setHTML(
+                    renderSimPopupContent(pointCtx, fullGeo, false, null, canSimulate())
+                )
+                attachSimLinkListener()
+            }
+        } catch (e: any) {
+            const errMsg = e.message || 'Gagal deteksi geografis'
+            setSimErr(errMsg)
+            if (geoReqSeqRef.current === seq && simPopupRef.current) {
+                simPopupRef.current.setHTML(
+                    renderSimPopupContent(pointCtx, null, false, errMsg, canSimulate())
+                )
+                attachSimLinkListener()
+            }
+        } finally {
+            setSimLoading(false)
+        }
+    }
+
+    function attachSimLinkListener() {
+        const link = document.getElementById('open-sim-form')
+        if (link) {
+            link.onclick = (ev: any) => {
+                ev.preventDefault()
+                ev.stopPropagation?.()
+                ev.stopImmediatePropagation?.()
+                // Cek minimal zoom sebelum membuka form simulasi
+                const maps = mapRef.current
+                if (!canSimulate()) {
+                    const targetZoom = getSimMinZoom()
+                    // Zoom mendekat ke titik klik
+                    if (maps && simPoint) {
+                        maps.easeTo({ center: [simPoint.lng, simPoint.lat], zoom: targetZoom, duration: 700 })
+                        // Perbarui isi popup untuk memberi tahu user
+                        if (simPopupRef.current) {
+                            simPopupRef.current.setHTML(
+                                renderSimPopupContent(simPoint, simGeo, false, null, false)
+                            )
+                            attachSimLinkListener()
+                        }
+                    }
+                    return
+                }
+                // Boleh simulasi → buka form dan tutup popup
+                // Cek minimal zoom sebelum membuka form simulasi
+                const map = mapRef.current
+                if (!canSimulate()) {
+                    const targetZoom = getSimMinZoom()
+                    // Zoom mendekat ke titik klik
+                    if (map && simPoint) {
+                        map.easeTo({ center: [simPoint.lng, simPoint.lat], zoom: targetZoom, duration: 700 })
+                        // Perbarui isi popup untuk memberi tahu user
+                        if (simPopupRef.current) {
+                            simPopupRef.current.setHTML(
+                                renderSimPopupContent(simPoint, simGeo, false, null, false)
+                            )
+                            attachSimLinkListener()
+                        }
+                    }
+                    return
+                }
+                // Boleh simulasi → buka form dan tutup popup
+                setSimOpen(true)
+                if (simPopupRef.current) {
+                    simPopupRef.current.remove()
+                    simPopupRef.current = null
+                }
+            }
+        }
+    }
+
+
+    async function saveSimulation(form: HTMLFormElement) {
+        if (!simPoint) return
+        setSimSaving(true); setSimErr(null)
+        try {
+            const fd = new FormData()
+            fd.append('lat', String(simPoint.lat))
+            fd.append('lng', String(simPoint.lng))
+            const categoryId = (form.elements.namedItem('sim_category') as HTMLSelectElement)?.value
+            const disasterTypeId = (form.elements.namedItem('sim_disaster') as HTMLSelectElement)?.value
+            const model_id = (form.elements.namedItem('sim_model') as HTMLSelectElement)?.value
+            const cost_id = (form.elements.namedItem('sim_cost') as HTMLSelectElement)?.value
+            const year = (form.elements.namedItem('sim_year') as HTMLSelectElement)?.value
+            const photoInput = form.elements.namedItem('sim_photo') as HTMLInputElement
+            const photoFile = photoInput?.files?.[0]
+            const description = (form.elements.namedItem('sim_description') as HTMLTextAreaElement)?.value
+
+            if (categoryId) fd.append('categoryId', categoryId)
+            if (disasterTypeId) fd.append('disasterTypeId', disasterTypeId)
+            if (model_id) fd.append('model_id', model_id)
+            if (cost_id) fd.append('cost_id', cost_id)
+            if (year) fd.append('year', year)
+            if (description) fd.append('description', description)
+
+            // 4 lokasi dari select (utama), fallback ke deteksi jika belum ada
+            if (simProvId) fd.append('prov_id', simProvId); else if (simGeo?.provinceId) fd.append('prov_id', String(simGeo.provinceId))
+            if (simCityId) fd.append('city_id', simCityId); else if (simGeo?.cityId) fd.append('city_id', String(simGeo.cityId))
+            if (simDistrictId) fd.append('district_id', simDistrictId); else if (simGeo?.districtId) fd.append('district_id', String(simGeo.districtId))
+            if (simSubdistrictId) fd.append('subdistrict_id', simSubdistrictId); else if (simGeo?.subdistrictId) fd.append('subdistrict_id', String(simGeo.subdistrictId))
+
+            if (photoFile) fd.append('photo_gps', photoFile)
+            fd.append('isSimulation', '1')
+
+            const res = await fetch(`${(process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')}/api/rambu`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: fd
+            })
+            if (!res.ok) {
+                const txt = await res.text().catch(() => '')
+                throw new Error(txt || `Gagal (${res.status})`)
+            }
+            setSimOpen(false)
+            setSimPoint(null)
+            // reset lokasi form
+            setSimProvId(''); setSimCityId(''); setSimDistrictId(''); setSimSubdistrictId('')
+        } catch (e: any) {
+            setSimErr(e.message || 'Gagal simpan')
+        } finally {
+            setSimSaving(false)
+        }
+    }
+
+    // ESC untuk bersihkan marker & popup simulasi
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return
+            const map = mapRef.current
+            // kosongkan marker klik
+            const clickSrc = map?.getSource?.('sim-click') as any
+            if (clickSrc?.setData) {
+                clickSrc.setData({ type: 'FeatureCollection', features: [] })
+            }
+            // tutup popup & form
+            if (simPopupRef.current) {
+                try { simPopupRef.current.remove() } catch { }
+                simPopupRef.current = null
+            }
+            setSimOpen(false)
+            setSimPoint(null)
+            setSimGeo(null)
+            setSimErr(null)
+            setSimLoading(false)
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [])
+
+
+    //disini akhir dari form simulation rambu
 
     const { data: provGeomRaw, loading: loadingGeom } = useProvinceGeom(activeProvId)
 
@@ -106,26 +619,245 @@ export default function FullMap() {
         return null
     }
 
-    const rambuFiltered = useMemo(() => {
-        if (!rambuData) return []
-        // Nasional (tanpa provinsi terpilih)
-        if (!activeProvId) return rambuData
+    // const rambuFiltered = useMemo(() => {
+    //     if (!rambuData) return []
+    //     if (!activeProvId) return rambuData
 
-        // Jika geom tersedia → filter spasial (lebih akurat)
-        const polyFC = toPolygonFeatureCollection(normalizedProvGeom)
-        if (polyFC) {
-            try {
-                const pointsFC = toGeoJSON(rambuData) as any
-                const within = turf.pointsWithinPolygon(pointsFC, polyFC)
-                return within.features.map((f: any) => f.properties)
-            } catch (e) {
-                console.warn('[FullMap] Spatial filter gagal, fallback ke provinceId:', e)
-                return rambuData.filter((r: any) => r.provinceId === activeProvId)
-            }
+    //     console.log('data', JSON.stringify(rambuData));
+
+    //     // Awal: filter metadata berdasarkan provinceId
+    //     //const metaFiltered = rambuData.filter((r: any) => r.provinceId === activeProvId)
+    //     //let metaFiltered = rambuData.filter((r: any) => r.provinceId === activeProvId)
+    //     let metaFiltered = rambuData.filter((r: any) => {
+    //         const provVal = r.provinceId ?? r.prov_id
+    //         return Number(provVal) === Number(activeProvId)
+    //     })
+
+    //     //tambahkan filter city
+    //     if (activeCityId) {
+    //         const beforeCount = metaFiltered.length
+    //         metaFiltered = metaFiltered.filter((r: any) => {
+    //             const cVal = r.cityId ?? r.city_id
+    //             return Number(cVal) === Number(activeCityId)
+    //         })
+    //         if (beforeCount > 0 && metaFiltered.length === 0) {
+    //             console.debug('[rambuFiltered] Tidak ada rambu untuk cityId=', activeCityId, 'dalam provinsi', activeProvId)
+    //         }
+    //     }
+
+    //     const polyFC = toPolygonFeatureCollection(normalizedProvGeom)
+    //     if (!polyFC) return metaFiltered
+
+    //     try {
+    //         // Buffer ringan (≈2 km) untuk mengatasi simplifikasi / presisi koordinat
+    //         const KM_BUFFER = 2
+    //         const DEG_BUFFER = KM_BUFFER / 111 // pendekatan kasar konversi km ke derajat
+    //         const bufferedFeatures = polyFC.features.map((f: any) => {
+    //             try {
+    //                 return turf.buffer(f, DEG_BUFFER, { units: 'degrees' })
+    //             } catch {
+    //                 return f
+    //             }
+    //         })
+    //         const bufferedFC = {
+    //             type: 'FeatureCollection',
+    //             features: bufferedFeatures.filter(Boolean)
+    //         } as any
+
+    //         // Buat FeatureCollection titik (pastikan urutan [lng, lat])
+    //         const pointFeatures = (metaFiltered.length ? metaFiltered : rambuData).map((r: any) => {
+    //             const lng = Number(r.lng ?? r.lon)
+    //             const lat = Number(r.lat)
+    //             if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null
+    //             return {
+    //                 type: 'Feature',
+    //                 geometry: { type: 'Point', coordinates: [lng, lat] },
+    //                 properties: r
+    //             }
+    //         }).filter(Boolean)
+
+    //         const pointsFC = { type: 'FeatureCollection', features: pointFeatures } as any
+
+    //         // Coba cepat dengan pointsWithinPolygon (pakai buffered)
+    //         let within = []
+    //         try {
+    //             const tmp = turf.pointsWithinPolygon(pointsFC, bufferedFC)
+    //             within = tmp.features.map((f: any) => f.properties)
+    //         } catch (e) {
+    //             console.warn('[FullMap] pointsWithinPolygon error, fallback individual:', e)
+    //         }
+
+    //         // Fallback individual jika within kosong
+    //         if (within.length === 0 && pointFeatures.length) {
+    //             const polyList = bufferedFC.features
+    //             const manual: any[] = []
+    //             for (const pf of pointFeatures as PointFeature[]) {
+    //                 if (!pf?.geometry?.coordinates ||
+    //                     pf.geometry.type !== 'Point' ||
+    //                     pf.geometry.coordinates.length < 2) {
+    //                     continue
+    //                 }
+    //                 const coord = pf.geometry.coordinates as [number, number]
+    //                 let inside = false
+    //                 for (const poly of polyList) {
+    //                     try {
+    //                         if (turf.booleanPointInPolygon(coord, poly.geometry)) {
+    //                             inside = true
+    //                             break
+    //                         }
+    //                     } catch { /* ignore */ }
+    //                 }
+    //                 if (inside) manual.push(pf.properties)
+    //             }
+    //             if (manual.length) within = manual
+    //         }
+
+    //         // Jika hasil spatial kosong tetapi meta ada → kembalikan metaFiltered (jangan hilang)
+    //         if (within.length === 0 && metaFiltered.length > 0) {
+    //             console.warn('[FullMap][SpatialMiss] gunakan metaFiltered. activeProvId=', activeProvId,
+    //                 'metaCount=', metaFiltered.length)
+    //             return metaFiltered
+    //         }
+
+    //         // Gabung (hindari duplikat)
+    //         if (within.length && metaFiltered.length && within.length !== metaFiltered.length) {
+    //             const byId: Record<string | number, any> = {}
+    //             for (const m of metaFiltered) byId[m.id] = m
+    //             for (const s of within) byId[s.id] = s
+    //             return Object.values(byId)
+    //         }
+
+    //         return within.length ? within : metaFiltered
+    //     } catch (e) {
+    //         console.warn('[FullMap] Spatial filter gagal total, fallback meta:', e)
+    //         return metaFiltered
+    //     }
+    // }, [rambuData, activeProvId, activeCityId, normalizedProvGeom])
+
+    const rambuFiltered = useMemo(() => {
+        // Tidak ada data → kosong
+        if (!rambuData) return []
+
+        // Base awal: semua rambu, lalu terapkan filter satu per satu
+        let base = [...rambuData]
+
+        // =====================
+        // FILTER WILAYAH (opsional, bisa default “Semua”)
+        // =====================
+        if (activeProvId) {
+            base = base.filter((r: any) => Number(r.provinceId ?? r.prov_id) === Number(activeProvId))
         }
-        // Geom belum siap → fallback metadata provinceId
-        return rambuData.filter((r: any) => r.provinceId === activeProvId)
-    }, [rambuData, activeProvId, normalizedProvGeom])
+        if (activeCityId) {
+            base = base.filter((r: any) => Number(r.cityId ?? r.city_id) === Number(activeCityId))
+        }
+        if (activeDistrictId) {
+            base = base.filter((r: any) => Number(r.districtId ?? r.district_id) === Number(activeDistrictId))
+        }
+        if (activeSubdistrictId) {
+            base = base.filter((r: any) => Number(r.subdistrictId ?? r.subdistrict_id) === Number(activeSubdistrictId))
+        }
+
+        // =====================
+        // FILTER NON-WILAYAH (boleh dipilih meski wilayah “Semua”)
+        // =====================
+        if (activeCategoryId) {
+            base = base.filter((r: any) => Number(r.categoryId ?? r.category_id) === Number(activeCategoryId))
+        }
+        if (activeDisasterId) {
+            base = base.filter((r: any) => Number(r.disasterTypeId ?? r.disaster_type_id) === Number(activeDisasterId))
+        }
+        if (activeModelId) {
+            base = base.filter((r: any) => {
+                const mid = Number(r.model_id ?? r.modelId)
+                return Number.isFinite(mid) && mid === Number(activeModelId)
+            })
+        }
+        if (typeof activeYear === 'number') {
+            base = base.filter((r: any) => {
+                const yr = Number(r.year ?? r.tahun)
+                return Number.isFinite(yr) && yr === Number(activeYear)
+            })
+        }
+
+        // =====================
+        // SPATIAL LIMIT (hanya bila ada provinsi aktif + geom)
+        // =====================
+        if (!activeProvId) {
+            // Tanpa provinsi → tidak perlu spatial, kembalikan hasil meta/non-wilayah
+            return base
+        }
+
+        const polyFC = toPolygonFeatureCollection(normalizedProvGeom)
+        if (!polyFC) return base
+
+        try {
+            const KM_BUFFER = 2
+            const DEG_BUFFER = KM_BUFFER / 111
+            const bufferedFC = {
+                type: 'FeatureCollection',
+                features: (polyFC.features || []).map((f: any) => {
+                    try { return turf.buffer(f, DEG_BUFFER, { units: 'degrees' }) } catch { return f }
+                })
+            } as any
+
+            const pointFeatures = base.map((r: any) => {
+                const lng = Number(r.lng ?? r.lon)
+                const lat = Number(r.lat)
+                if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null
+                return { type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: r }
+            }).filter(Boolean)
+
+            if (!pointFeatures.length) return base
+
+            const pointsFC = { type: 'FeatureCollection', features: pointFeatures } as any
+
+            let within: any[] = []
+            try {
+                const tmp = turf.pointsWithinPolygon(pointsFC, bufferedFC)
+                within = tmp.features.map((f: any) => f.properties)
+            } catch { /* ignore */ }
+
+            if (!within.length) {
+                const manual: any[] = []
+                for (const pf of pointFeatures as PointFeature[]) {
+                    const c = pf.geometry.coordinates
+                    for (const poly of (bufferedFC.features || [])) {
+                        try {
+                            if (turf.booleanPointInPolygon(c, poly.geometry)) {
+                                manual.push(pf.properties)
+                                break
+                            }
+                        } catch { /* ignore */ }
+                    }
+                }
+                if (manual.length) within = manual
+            }
+
+            return within.length ? within : base
+        } catch {
+            return base
+        }
+    }, [
+        rambuData,
+        activeProvId,
+        activeCityId,
+        activeDistrictId,
+        activeSubdistrictId,
+        activeCategoryId,
+        activeDisasterId,
+        activeModelId,
+        activeYear,
+        normalizedProvGeom
+    ])
+
+    useEffect(() => {
+        if (!activeProvId || !rambuData) return
+        const sample = rambuData
+            .filter((r: any) => r.provinceId === activeProvId)
+            .slice(0, 5)
+            .map((r: any) => ({ id: r.id, lat: r.lat, lng: r.lng }))
+        console.debug('[FullMap][ProvDebug]', { activeProvId, sampleCount: sample.length, sample })
+    }, [activeProvId, rambuData])
 
     const rambuFC = useMemo(() => toGeoJSON(rambuFiltered), [rambuFiltered])
     // geom dipakai HANYA untuk zoom (tidak digambar)    
@@ -167,7 +899,18 @@ export default function FullMap() {
                 pitchWithRotate: false,
                 attributionControl: false,  // kita bisa custom control
             });
+            if (!mapRef.current) {
+                mapRef.current = new maplibregl.Map({
+                    container: containerRef.current,
+                    style: styleUrl,
+                    center: [117.5, -2.5],
+                    zoom: 4
+                })
+            }
+
             mapRef.current = map;
+
+            //map.doubleClickZoom.disable();
 
             map.on("error", (e: any) => {
                 const msg = String(e?.error || "");
@@ -181,32 +924,26 @@ export default function FullMap() {
             map.on("load", () => {
                 if (!alive) return;
 
-                // const img = new Image();
-                // img.crossOrigin = "anonymous";
-                // img.src = "/images/EVAKUASIKANAN.png";
-
-                // img.onload = () => {
-                //     try {
-                //         if (!map.hasImage("icon-evakuasi")) {
-                //             map.addImage("icon-evakuasi", img);
-                //         }
-                //     } catch (e) {
-                //         console.error("Gagal addImage:", e);
-                //     }
-                // };
-
-                // img.onerror = (e) => {
-                //     console.error("Gagal load icon PNG:", e);
-                // };
-
-                // Subtle atmosphere (safe on Positron)
-                // try {
-                //     map.setFog({
-                //         range: [0.5, 8],
-                //         color: "rgba(245,248,250,0.6)",
-                //         "horizon-blend": 0.03,
-                //     } as any);
-                // } catch { }
+                // Source & layer marker klik (tanda kontak biru tua)
+                if (!map.getSource('sim-click')) {
+                    map.addSource('sim-click', {
+                        type: 'geojson',
+                        data: { type: 'FeatureCollection', features: [] }
+                    })
+                }
+                if (!map.getLayer('sim-click-marker')) {
+                    map.addLayer({
+                        id: 'sim-click-marker',
+                        type: 'circle',
+                        source: 'sim-click',
+                        paint: {
+                            'circle-color': BRAND_BLUE,
+                            'circle-radius': 9,
+                            'circle-stroke-width': 2,
+                            'circle-stroke-color': '#ffffff'
+                        }
+                    })
+                }
 
                 // ===============================
                 // Source & layers: RAMBU (cluster)
@@ -290,24 +1027,6 @@ export default function FullMap() {
                     });
                 }
 
-                // if (!map.getLayer("rambu-icons")) {
-                //     map.addLayer({
-                //         id: "rambu-icons",
-                //         type: "symbol",
-                //         source: "rambu",
-                //         filter: ["!", ["has", "point_count"]],
-                //         layout: {
-                //             "icon-image": "icon-evakuasi",
-                //             "icon-size": 0.040,
-                //             "icon-anchor": "bottom",
-                //             "icon-allow-overlap": true
-                //         }
-                //     });
-                // }
-                // if (map.getLayer("rambu-unclustered")) {
-                //     map.setLayoutProperty("rambu-unclustered", "visibility", "none");
-                // }
-
                 // Popups & cluster zoom
                 map.on("click", "rambu-unclustered", (e: any) => {
                     const f = e.features?.[0]; if (!f) return;
@@ -362,10 +1081,53 @@ export default function FullMap() {
                 }
 
                 map.on("click", (e: any) => {
+
+                    const features = map.queryRenderedFeatures(e.point, {
+                        layers: ['rambu-unclustered', 'rambu-clusters']
+                    })
+                    if (features && features.length) return
                     const { lng, lat } = e.lngLat;
                     console.log("Tambah titik simulasi:", lng, lat);
-                    addSimPoint(lng, lat);
+                    //addSimPoint(lng, lat);
+                    setSimPoint({ lat, lng })
+                    setSimOpen(false)
+                    setSimGeo(null)
+                    setSimErr(null)
+                    setSimLoading(true)
+
+                    // Update marker klik (sim-click)
+                    const clickSrc = map.getSource('sim-click') as any
+                    if (clickSrc?.setData) {
+                        clickSrc.setData({
+                            type: 'FeatureCollection',
+                            features: [{
+                                type: 'Feature',
+                                geometry: { type: 'Point', coordinates: [lng, lat] },
+                                properties: {}
+                            }]
+                        })
+                    }
+
+                    if (simPopupRef.current) {
+                        simPopupRef.current.remove()
+                        simPopupRef.current = null
+                    }
+                    const popup = new maplibregl.Popup({ closeOnClick: true })
+                        .setLngLat([lng, lat])
+                        //
+                        .setHTML(
+                            renderSimPopupContent({ lat, lng }, null, true, null, canSimulate())
+                        )
+                        .addTo(map)
+                    simPopupRef.current = popup
+
+                    // Attach link listener (awal – masih loading)
+                    attachSimLinkListener()
+
+                    // Mulai fetch geografis
+                    fetchGeografis(lat, lng)
                 });
+
 
                 // SOURCE simulasi
                 if (!map.getSource("sim-rambu")) {
@@ -410,7 +1172,11 @@ export default function FullMap() {
                 mapRef.current = null;
             };
         })();
-    }, []);
+    }, [token]);
+
+    const yearOptions = useMemo(() =>
+        Array.from({ length: 8 }, (_, i) => new Date().getFullYear() - 4 + i),
+        [])
 
 
     // Update data rambu di source
@@ -535,6 +1301,178 @@ export default function FullMap() {
                 style={{ minHeight: '100svh', background: '#eef2ff' }}
             />
 
+            {/* component form */}
+            {simOpen && simPoint && (
+                <div className="absolute top-4 left-100 z-50 w-[300px] rounded-lg bg-white shadow-lg border p-3 text-xs">
+                    <div className="flex justify-between items-center mb-2">
+                        <strong className="text-[13px]">Simulasi Pembuatan Rambu Baru</strong>
+                        <button
+                            onClick={() => { setSimOpen(false); setSimPoint(null) }}
+                            className="text-red-500 hover:text-red-700 text-xs"
+                        >✕</button>
+                    </div>
+                    <form
+                        onSubmit={(e) => { e.preventDefault(); saveSimulation(e.currentTarget) }}
+                        className="space-y-2"
+                    >
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="block mb-1">Lat</label>
+                                <input
+                                    readOnly
+                                    value={simPoint.lat.toFixed(6)}
+                                    className="w-full rounded border px-2 py-1 bg-gray-50"
+                                />
+                            </div>
+                            <div>
+                                <label className="block mb-1">Lng</label>
+                                <input
+                                    readOnly
+                                    value={simPoint.lng.toFixed(6)}
+                                    className="w-full rounded border px-2 py-1 bg-gray-50"
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <span className="font-medium">Wilayah</span>
+                                <button
+                                    type="button"
+                                    onClick={detectSimGeografis}
+                                    className="rounded bg-blue-600 px-2 py-1 text-white disabled:opacity-50"
+                                    disabled={!simPoint}
+                                >
+                                    Deteksi Lokasi
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="block mb-1">Provinsi</label>
+                                    <select
+                                        value={simProvId}
+                                        onChange={e => setSimProvId(e.target.value)}
+                                        className="w-full rounded border px-2 py-1"
+                                    >
+                                        <option value="">— pilih —</option>
+                                        {provs?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block mb-1">Kota/Kabupaten</label>
+                                    <select
+                                        value={simCityId}
+                                        onChange={e => setSimCityId(e.target.value)}
+                                        disabled={!simProvId}
+                                        className="w-full rounded border px-2 py-1 disabled:bg-gray-100"
+                                    >
+                                        <option value="">— pilih —</option>
+                                        {cities?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block mb-1">Kecamatan</label>
+                                    <select
+                                        value={simDistrictId}
+                                        onChange={e => setSimDistrictId(e.target.value)}
+                                        disabled={!simCityId}
+                                        className="w-full rounded border px-2 py-1 disabled:bg-gray-100"
+                                    >
+                                        <option value="">— pilih —</option>
+                                        {dists?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block mb-1">Kelurahan/Desa</label>
+                                    <select
+                                        value={simSubdistrictId}
+                                        onChange={e => setSimSubdistrictId(e.target.value)}
+                                        disabled={!simDistrictId}
+                                        className="w-full rounded border px-2 py-1 disabled:bg-gray-100"
+                                    >
+                                        <option value="">— pilih —</option>
+                                        {subs?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="block mb-1">Rambu (Kategori)</label>
+                                <select name="sim_category" className="w-full rounded border px-2 py-1">
+                                    <option value="">— pilih —</option>
+                                    {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
+                            {/* tambahkan description atau alamat di bagian sini, setelah rambu */}
+                            <div>
+                                <label className="block mb-1">Deskripsi / Alamat</label>
+                                <input
+                                    name="sim_description"
+                                    className="w-full rounded border px-2 py-1"
+                                    placeholder="(opsional) deskripsi singkat atau alamat lokasi rambu"
+                                />
+                            </div>
+                            <div>
+                                <label className="block mb-1">Model Rambu</label>
+                                <select name="sim_model" className="w-full rounded border px-2 py-1">
+                                    <option value="">— pilih —</option>
+                                    {models?.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block mb-1">Jenis Bencana</label>
+                                <select name="sim_disaster" className="w-full rounded border px-2 py-1">
+                                    <option value="">— pilih —</option>
+                                    {disasters?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block mb-1">Sumber Dana</label>
+                                <select name="sim_cost" className="w-full rounded border px-2 py-1">
+                                    <option value="">— pilih —</option>
+                                    {costSources?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block mb-1">Tahun</label>
+                                <select name="sim_year" className="w-full rounded border px-2 py-1">
+                                    <option value="">— pilih —</option>
+                                    {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block mb-1">Foto (1 wajib)</label>
+                            <input
+                                name="sim_photo"
+                                type="file"
+                                accept="image/*"
+                                className="w-full text-[11px] file:mr-2 file:py-1 file:px-2 file:border file:rounded file:bg-[#004AAD] file:text-white"
+                            />
+                            <p className="text-[10px] text-gray-500 mt-1">Unggah 1 foto sebagai bukti lokasi.</p>
+                        </div>
+                        <div className="pt-1 flex gap-2">
+                            <button
+                                type="submit"
+                                disabled={simSaving}
+                                className="flex-1 rounded bg-[#004AAD] text-white py-1 text-xs disabled:opacity-60"
+                            >
+                                {simSaving ? 'Menyimpan…' : 'Simpan'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setSimOpen(false); setSimPoint(null) }}
+                                className="rounded bg-gray-200 px-3 py-1 text-xs"
+                            >Batal</button>
+                        </div>
+                        {simErr && <div className="text-red-600">{simErr}</div>}
+                        <p className="text-[10px] text-gray-500">
+                            (Simulasi: backend mungkin menolak bila foto wajib. Tambahkan relaksasi validasi untuk isSimulation.)
+                        </p>
+                    </form>
+                </div>
+            )}
+
             {/* BURGER (drawer kiri) */}
             {drawerOpen && (
                 <button
@@ -560,69 +1498,169 @@ export default function FullMap() {
 
             {/* Panel filter */}
             {panelOpen && (
-                <div className="absolute top-28 right-3 z-[1099] rounded-2xl bg-white/95 backdrop-blur border shadow p-3 w-[340px] max-h-[70vh] overflow-auto">
+                <div className="absolute top-28 right-3 z-[1099] rounded-2xl bg-white/95 backdrop-blur border shadow p-3 w-[360px] max-h-[72vh] overflow-auto">
                     <div className="text-sm font-semibold mb-2">Filter Peta</div>
 
-                    <label className="block">
-                        <span className="block text-xs mb-1">Provinsi</span>
-                        <select
-                            value={pendingProvStr}
-                            onChange={(e) => setPendingProvStr(e.target.value)}
-                            className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-[#004AAD]"
-                        >
-                            <option value="">— Semua provinsi —</option>
-                            {provinces?.map((p) => (
-                                <option key={p.id} value={String(p.id)}>
-                                    {p.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                    {/* Cascading wilayah */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                            <span className="block text-xs mb-1">Provinsi</span>
+                            <select
+                                value={pendingProvStr}
+                                onChange={(e) => setPendingProvStr(e.target.value)}
+                                className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-[#004AAD]"
+                            >
+                                <option value="">— Semua —</option>
+                                {provinces?.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                            </select>
+                        </label>
+                        <label className="block">
+                            <span className="block text-xs mb-1">Kota/Kab</span>
+                            <select
+                                value={pendingCityStr}
+                                onChange={(e) => setPendingCityStr(e.target.value)}
+                                disabled={!pendingProvStr}
+                                className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100 focus:ring-2 focus:ring-[#004AAD]"
+                            >
+                                <option value="">— Semua —</option>
+                                {filterCities?.map((c: any) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+                            </select>
+                        </label>
+                        <label className="block">
+                            <span className="block text-xs mb-1">Kecamatan</span>
+                            <select
+                                value={pendingDistrictStr}
+                                onChange={(e) => setPendingDistrictStr(e.target.value)}
+                                disabled={!pendingCityStr}
+                                className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100 focus:ring-2 focus:ring-[#004AAD]"
+                            >
+                                <option value="">— Semua —</option>
+                                {filterDists?.map((d: any) => <option key={d.id} value={String(d.id)}>{d.name}</option>)}
+                            </select>
+                        </label>
+                        <label className="block">
+                            <span className="block text-xs mb-1">Kel/Desa</span>
+                            <select
+                                value={pendingSubdistrictStr}
+                                onChange={(e) => setPendingSubdistrictStr(e.target.value)}
+                                disabled={!pendingDistrictStr}
+                                className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100 focus:ring-2 focus:ring-[#004AAD]"
+                            >
+                                <option value="">— Semua —</option>
+                                {filterSubs?.map((s: any) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+                            </select>
+                        </label>
+                    </div>
+
+                    {/* Non-wilayah filters */}
+                    <div className="mt-4 space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                            <label className="block">
+                                <span className="block text-xs mb-1">Kategori Rambu</span>
+                                <select
+                                    value={pendingCategoryStr}
+                                    onChange={(e) => setPendingCategoryStr(e.target.value)}
+                                    className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-[#004AAD]"
+                                >
+                                    <option value="">— Semua —</option>
+                                    {categories?.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+                                </select>
+                            </label>
+                            <label className="block">
+                                <span className="block text-xs mb-1">Jenis Bencana</span>
+                                <select
+                                    value={pendingDisasterStr}
+                                    onChange={(e) => setPendingDisasterStr(e.target.value)}
+                                    className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-[#004AAD]"
+                                >
+                                    <option value="">— Semua —</option>
+                                    {disasters?.map(d => <option key={d.id} value={String(d.id)}>{d.name}</option>)}
+                                </select>
+                            </label>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <label className="block">
+                                <span className="block text-xs mb-1">Model Rambu</span>
+                                <select
+                                    value={pendingModelStr}
+                                    onChange={(e) => setPendingModelStr(e.target.value)}
+                                    className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-[#004AAD]"
+                                >
+                                    <option value="">— Semua —</option>
+                                    {models?.map(m => <option key={m.id} value={String(m.id)}>{m.name}</option>)}
+                                </select>
+                            </label>
+                            <label className="block">
+                                <span className="block text-xs mb-1">Tahun</span>
+                                <select
+                                    value={pendingYearStr}
+                                    onChange={(e) => setPendingYearStr(e.target.value)}
+                                    className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-[#004AAD]"
+                                >
+                                    <option value="">— Semua —</option>
+                                    {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
+                                </select>
+                            </label>
+                        </div>
+                    </div>
 
                     <button
                         type="button"
                         onClick={() => {
-                            const newId = pendingProvStr ? Number(pendingProvStr) : undefined
-                            setActiveProvId((prev) => {
-                                // jika pilih prov yang sama → tetap set lagi supaya state konsisten
-                                // lalu paksa refresh zoom dengan refreshSeq
-                                if (prev === newId) {
-                                    setRefreshSeq((s) => s + 1)
-                                    return prev
-                                }
-                                return newId
-                            })
-                            //if (newId !== undefined) {
-                            // juga paksa refresh zoom saat ganti prov agar responsif
-                            //refetchRambu()
-                            setRefreshSeq((s) => s + 1)
-                            //}
+                            setActiveProvId(pendingProvStr ? Number(pendingProvStr) : undefined)
+                            setActiveCityId(pendingCityStr ? Number(pendingCityStr) : undefined)
+                            setActiveDistrictId(pendingDistrictStr ? Number(pendingDistrictStr) : undefined)
+                            setActiveSubdistrictId(pendingSubdistrictStr ? Number(pendingSubdistrictStr) : undefined)
+                            setActiveCategoryId(pendingCategoryStr ? Number(pendingCategoryStr) : undefined)
+                            setActiveDisasterId(pendingDisasterStr ? Number(pendingDisasterStr) : undefined)
+                            setActiveModelId(pendingModelStr ? Number(pendingModelStr) : undefined)
+                            setRefreshSeq(s => s + 1)
                         }}
-                        className="mt-3 w-full rounded-lg bg-[#004AAD] text-white text-sm py-2 hover:opacity-95 disabled:opacity-60"
-                        disabled={loadingAny}
+                        className="mt-4 w-full rounded-lg bg-[#004AAD] text-white text-sm py-2 hover:opacity-95 disabled:opacity-60"
+                        disabled={loadingRambu}
                     >
-                        {loadingAny ? 'Memuat…' : 'Tampilkan'}
+                        Terapkan Filter
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setPendingProvStr('')
+                            setPendingCityStr('')
+                            setPendingDistrictStr('')
+                            setPendingSubdistrictStr('')
+                            setPendingCategoryStr('')
+                            setPendingDisasterStr('')
+                            setPendingModelStr('')
+                            setActiveProvId(undefined)
+                            setActiveCityId(undefined)
+                            setActiveDistrictId(undefined)
+                            setActiveSubdistrictId(undefined)
+                            setActiveCategoryId(undefined)
+                            setActiveDisasterId(undefined)
+                            setActiveModelId(undefined)
+                            setRefreshSeq(s => s + 1)
+                        }}
+                        className="mt-2 w-full rounded-lg bg-gray-200 text-gray-700 text-sm py-2 hover:bg-gray-300"
+                    >
+                        Reset
                     </button>
 
                     <div className="mt-3 text-[11px] text-gray-600">
-                        Menampilkan: <span className="font-semibold">{activeProvName}</span>
+                        Aktif: {activeProvId ? `Prov#${activeProvId}` : 'Semua Provinsi'}
+                        {activeCityId ? ` / Kota#${activeCityId}` : ''}
+                        {activeDistrictId ? ` / Kec#${activeDistrictId}` : ''}
+                        {activeSubdistrictId ? ` / Kel#${activeSubdistrictId}` : ''}
+                        {activeCategoryId ? ` / Kat#${activeCategoryId}` : ''}
+                        {activeDisasterId ? ` / Bencana#${activeDisasterId}` : ''}
+                        {activeModelId ? ` / Model#${activeModelId}` : ''}
                     </div>
-                    {/* <div className="mt-2 text-[11px] text-gray-500">
-                        {loadingRambu ? 'Titik rambu: memuat…' : `Titik rambu: ${rambu?.length ?? 0}`}
-                    </div> */}
-                    {/* <div className="mt-2 text-[11px] text-gray-500">
+                    <div className="mt-1 text-[11px] text-gray-500">
                         {loadingRambu
                             ? 'Titik rambu: memuat…'
-                            : `Titik rambu: ${rambuFiltered?.length ?? 0}`}
-                    </div> */}
-                    <div className="mt-2 text-[11px] text-gray-500">
-                        {loadingRambu
-                            ? 'Titik rambu: memuat…'
-                            : `Titik rambu: ${rambuFiltered?.length ?? 0} ${activeProvId ? '(dalam provinsi)' : '(nasional)'}`}
-                        {(!loadingRambu && activeProvId && normalizedProvGeom && rambuFiltered?.length === 0) && (
-                            <div className="mt-1 text-[10px] text-amber-600">
-                                Tidak ada rambu di dalam batas provinsi ini.
-                            </div>
+                            : `Titik rambu: ${rambuFiltered.length} ${activeProvId ? '(terfilter)' : '(nasional)'}`}
+                        {(!loadingRambu && rambuFiltered.length === 0) && (
+                            <div className="mt-1 text-[10px] text-amber-600">Tidak ada rambu sesuai filter.</div>
                         )}
                     </div>
                 </div>
