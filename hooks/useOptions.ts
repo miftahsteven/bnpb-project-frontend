@@ -16,4 +16,8 @@ export function useModels() {
 }
 export function useCostSources() {
     return useFetch<Option[]>('/ref/costsource', () => apiGet('/api/ref/costsource'))
-}   
+}
+
+export function useSatuanKerja() {
+    return useFetch<Option[]>('/users/satuan-kerja', () => apiGet('/api/users/satuan-kerja'))
+}

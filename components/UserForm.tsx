@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useSatuanKerja } from "@/hooks/useOptions";
 
 type UserItem = {
     id: number;
@@ -39,13 +40,15 @@ export default function UserForm({
 
     const [satkerList, setSatkerList] = useState<SatkerItem[]>([]);
 
+    const { data: satuanKerjaList, loading: loadingCat } = useSatuanKerja();
+
     async function loadSatker() {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/satker/list`, {
             headers: { Authorization: `Bearer ${token}` },
         });
 
         const data = await res.json();
-        setSatkerList(data);
+        setSatkerList(satuanKerjaList || []);
     }
 
     useEffect(() => {
@@ -167,8 +170,8 @@ export default function UserForm({
                         onChange={(e) => setSatker(Number(e.target.value))}
                         className="w-full px-3 py-2 border rounded"
                     >
-                        <option value="">Tidak ada</option>
-                        {satkerList.map((s) => (
+                        <option value="">-- Pilih --</option>
+                        {satuanKerjaList?.map((s) => (
                             <option key={s.id} value={s.id}>
                                 {s.name}
                             </option>
