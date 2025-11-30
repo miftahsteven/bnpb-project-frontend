@@ -104,7 +104,10 @@ export default function UserForm({
     }
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div
+            //className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            className="fixed inset-0 z-[2050] bg-black/60 flex items-center justify-center p-4"
+        >
             <div className="bg-white w-full max-w-lg rounded shadow-lg p-6">
                 <h1 className="text-xl font-semibold mb-4">
                     {editItem ? "Edit User" : "Tambah User"}
