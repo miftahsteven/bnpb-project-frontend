@@ -17,6 +17,9 @@ const nextConfig = {
 
     // ✅ Nonaktifkan turbopack sepenuhnya
     turbopack: false,
+    images: {
+        unoptimized: true,
+    },
 };
 
 export default nextConfig;

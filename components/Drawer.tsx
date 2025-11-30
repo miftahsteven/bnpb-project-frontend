@@ -48,7 +48,7 @@ export default function Drawer() {
                 <div className="p-4 border-b border-gray-200">
                     <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-1 justify-items-center'>
                         <Link href="/">
-                            <Image src="/images/logo_BNPB.png" alt="BNPB Logo" width={150} height={50} className="h-10 w-auto" priority />
+                            <img src="/images/logo_BNPB.png" alt="BNPB Logo" width={150} height={50} className="h-10 w-auto" />
                         </Link>
                         <span className="self-center font-bold text-lg text-center">Sistem Informasi Rambu Bencana</span>
                     </div>
