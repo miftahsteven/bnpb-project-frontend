@@ -800,8 +800,8 @@ export default function FullMap() {
                         type: "geojson",
                         data: rambuFC as any,
                         cluster: true,
-                        clusterMaxZoom: 18, //11,14
-                        clusterRadius: 20, //40, 20 
+                        clusterMaxZoom: 11, //11,14
+                        clusterRadius: 40, //40, 20 
                         // Agregasi status dalam cluster
                         clusterProperties: {
                             simCount: [
