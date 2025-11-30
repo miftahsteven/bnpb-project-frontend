@@ -15,6 +15,12 @@ export default function Drawer() {
     const { user, loading, logout } = useAuth()
     const { setLoginModalOpen } = useUI();
     const [showLogin, setShowLogin] = useState(false)
+    const base = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')
+
+    function toPhotoUrl(u: string) {
+        if (/^https?:\/\//i.test(u)) return u
+        return `${base}${u.startsWith('/') ? '' : '/'}${u}`
+    }
 
     // useEffect(() => {
     //     if (!user) setLoginModalOpen(true)
@@ -46,15 +52,15 @@ export default function Drawer() {
                 <div className="h-12" />
                 {/* letakan logo BNPB disini */}
                 <div className="p-4 border-b border-gray-200">
-                    <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-1 justify-items-center'>
+                    <div className='grid gap-2 md:grid-cols-2'>
                         <Link href="/">
-                            <img src="/images/logo_BNPB.png" alt="BNPB Logo" width={150} height={50} className="h-10 w-auto" />
+                            <img src={toPhotoUrl('uploads/Logo_BNPB.png')} alt="BNPB Logo" className="h-15 w-auto" />
                         </Link>
-                        <span className="self-center font-bold text-lg text-center">Sistem Informasi Rambu Bencana</span>
+                        {/* <span className="self-center font-bold text-sm text-center">Sistem Informasi Rambu Bencana</span> */}
                     </div>
                 </div>
                 <div className="p-4 space-y-3">
-                    <h2 className="font-semibold">Rambu Bencana</h2>
+                    <h2 className="font-semibold">Menu</h2>
                     <nav className="space-y-1 text-sm">
                         <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/">Peta (FullMap)</Link>
                         {user && (
