@@ -6,6 +6,8 @@ import { Menu, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '@/hooks/useAuth';
 import { useUI } from '@/hooks/useUI';
+import Image from 'next/image'
+
 //import LoginModal from "@/components/auth/LoginModal";
 
 export default function Drawer() {
@@ -44,13 +46,12 @@ export default function Drawer() {
                 <div className="h-12" />
                 {/* letakan logo BNPB disini */}
                 <div className="p-4 border-b border-gray-200">
-                    <Link href="/">
-                        <img src="/images/logo_BNPB.png" alt="BNPB Logo" className="h-8 mx-auto" />
-                        {/* tambah keterangan nama sisten "Manajemen Rambu Bencana" */}
-                        <div className="text-center text-sm font-semibold text-gray-700 mt-1">
-                            Manajemen Rambu Bencana
-                        </div>
-                    </Link>
+                    <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-1 justify-items-center'>
+                        <Link href="/">
+                            <Image src="/images/logo_BNPB.png" alt="BNPB Logo" width={150} height={50} className="h-10 w-auto" priority />
+                        </Link>
+                        <span className="self-center font-bold text-lg text-center">Sistem Informasi Rambu Bencana</span>
+                    </div>
                 </div>
                 <div className="p-4 space-y-3">
                     <h2 className="font-semibold">Rambu Bencana</h2>
