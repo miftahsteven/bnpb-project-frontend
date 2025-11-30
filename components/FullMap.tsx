@@ -34,9 +34,10 @@ const COLOR_BY_DISASTER: Record<number, string> = {
 
 // Warna status
 const STATUS_COLORS = {
-    simulation: '#ec4899', // pink-500
+    simulation: '#3432a8', // pink-500
     draft: '#f59e0b',      // amber-500
     published: '#10b981',  // emerald-500
+    broken: '#ef4444',     // red-500
 } as const
 
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || 'BSMSxOeDudgubp5q2uYq'
@@ -817,6 +818,10 @@ export default function FullMap() {
                                 '+',
                                 ['case', ['==', ['get', 'status'], 'draft'], 1, 0],
                             ],
+                            brokenCount: [
+                                '+',
+                                ['case', ['==', ['get', 'status'], 'broken'], 1, 0],
+                            ],
                         },
                     });
                 }
@@ -840,17 +845,24 @@ export default function FullMap() {
                             // Warna cluster = status dominan dalam cluster
                             "circle-color": [
                                 "case",
-                                // sim dominan
+                                // simulation dominan
                                 ["all",
+                                    [">=", ["coalesce", ["get", "simCount"], 0], ["coalesce", ["get", "brokenCount"], 0]],
                                     [">=", ["coalesce", ["get", "simCount"], 0], ["coalesce", ["get", "publishedCount"], 0]],
                                     [">=", ["coalesce", ["get", "simCount"], 0], ["coalesce", ["get", "draftCount"], 0]]
                                 ],
                                 STATUS_COLORS.simulation,
+                                // broken dominan
+                                ["all",
+                                    [">=", ["coalesce", ["get", "brokenCount"], 0], ["coalesce", ["get", "publishedCount"], 0]],
+                                    [">=", ["coalesce", ["get", "brokenCount"], 0], ["coalesce", ["get", "draftCount"], 0]]
+                                ],
+                                STATUS_COLORS.broken,
                                 // published dominan
                                 [">=", ["coalesce", ["get", "publishedCount"], 0], ["coalesce", ["get", "draftCount"], 0]],
                                 STATUS_COLORS.published,
-                                // else → draft
-                                STATUS_COLORS.draft
+                                // else draft
+                                STATUS_COLORS.draft,
                             ],
                             // Radius tetap berdasarkan jumlah titik
                             "circle-radius": ["step", ["get", "point_count"], 14, 20, 18, 50, 24, 100, 32],
@@ -901,10 +913,18 @@ export default function FullMap() {
                             //     DEFAULT_COLOR
                             // ],
                             // Warna titik tunggal berdasarkan status
+                            // "circle-color": [
+                            //     "case",
+                            //     //["==", ["get", "isSimulation"], 1], STATUS_COLORS.simulation,
+                            //     ["==", ["to-number", ["coalesce", ["get", "isSimulation"], 0]], 1], STATUS_COLORS.simulation,
+                            //     ["==", ["get", "status"], "published"], STATUS_COLORS.published,
+                            //     ["==", ["get", "status"], "draft"], STATUS_COLORS.draft,
+                            //     DEFAULT_COLOR
+                            // ],
                             "circle-color": [
                                 "case",
-                                //["==", ["get", "isSimulation"], 1], STATUS_COLORS.simulation,
                                 ["==", ["to-number", ["coalesce", ["get", "isSimulation"], 0]], 1], STATUS_COLORS.simulation,
+                                ["==", ["get", "status"], "broken"], STATUS_COLORS.broken,
                                 ["==", ["get", "status"], "published"], STATUS_COLORS.published,
                                 ["==", ["get", "status"], "draft"], STATUS_COLORS.draft,
                                 DEFAULT_COLOR
@@ -924,6 +944,9 @@ export default function FullMap() {
                     new maplibregl.Popup({ offset: 12 })
                         .setLngLat(coord)
                         .setHTML(`
+                 <div style="margin-bottom:6px;font-size:14px;font-weight:600;color:#222; bg-color:#f59e0b; width:fit-content; padding:2px 6px; border-radius:4px;">
+                 ${p.status} ${p.isSimulation == 1 ? '- simulasi' : ''}
+                 </div>
                   <div style="min-width:220px">
                     <div style="font-weight:600;margin-bottom:4px">${p.name ?? "Rambu"}</div>
                     ${p.description ? `<div style="font-size:12px;color:#555">${p.description}</div>` : ""}
