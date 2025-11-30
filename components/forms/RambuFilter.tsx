@@ -7,6 +7,8 @@ import {
     useSubdistricts,
 } from '@/hooks/useCascadingLocations'
 import { useCategories, useDisasterTypes, useModels, useCostSources } from '@/hooks/useOptions'
+import { is } from 'zod/locales'
+import { set } from 'zod'
 
 
 type QueryState = {
@@ -45,6 +47,7 @@ export default function RambuFilter({ open, query, onApply, onClose }: Props) {
     const [statusStr, setStatusStr] = useState<string>('')
     const [yearStr, setYearStr] = useState<string>('')
 
+    const [simulationOnly, setSimulationOnly] = useState<number>(0)
     // Flag untuk mencegah reset child saat prefill
     const [isHydrating, setIsHydrating] = useState(false)
     const prevProv = useRef<string>('')
@@ -62,8 +65,9 @@ export default function RambuFilter({ open, query, onApply, onClose }: Props) {
         setDisasterTypeStr(query.disasterTypeId != null ? String(query.disasterTypeId) : '')
         setModelStr(query.modelId != null ? String(query.modelId) : '')
         setCostSourceStr(query.costSourceId != null ? String(query.costSourceId) : '')
-        setStatusStr(query.isSimulation === 1 ? 'simulation' : (query.status || ''))
+        setStatusStr(query.status || '')
         setYearStr(query.year != null ? String(query.year) : '')
+        setSimulationOnly(query.isSimulation === 1 ? 1 : 0)
         // Matikan hydrasi setelah flush microtask
         setTimeout(() => setIsHydrating(false), 0)
     }, [
@@ -131,7 +135,9 @@ export default function RambuFilter({ open, query, onApply, onClose }: Props) {
             modelId: modelStr ? Number(modelStr) : undefined,
             costSourceId: costSourceStr ? Number(costSourceStr) : undefined,
             status: statusStr === 'simulation' ? 'draft' : (statusStr || undefined),
-            isSimulation: statusStr === 'simulation' ? 1 : undefined,
+            //isSimulation: simulationOnly ? 1 : undefined,
+            // kirim isSimulation=1 hanya jika checkbox aktif; jangan kirim 0
+            isSimulation: simulationOnly === 1 ? 1 : 0,
             year: yearStr ? Number(yearStr) : undefined,
             // Reset halaman ke 1
             page: 1,
@@ -313,7 +319,7 @@ export default function RambuFilter({ open, query, onApply, onClose }: Props) {
                                 <option value="">— Semua —</option>
                                 <option value="draft">Draft</option>
                                 <option value="published">Published</option>
-                                <option value="simulation">Simulasi</option>
+                                <option value="broken">Broken</option>
                             </select>
                         </label>
                         {/* Tahun Dibuat */}
@@ -331,6 +337,24 @@ export default function RambuFilter({ open, query, onApply, onClose }: Props) {
                             </select>
                         </label>
                     </div>
+                </div>
+                {/* tambahkan check box, isSimulasi jika di check, dan uncheck bukan simulasi  */}
+                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t bg-slate-50">
+                    <label className="inline-flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            className="form-checkbox h-4 w-4 text-blue-600"
+                            checked={simulationOnly === 1}
+                            onChange={(e) => {
+                                if (e.target.checked) {
+                                    setSimulationOnly(1)
+                                } else {
+                                    setSimulationOnly(0)
+                                }
+                            }}
+                        />
+                        <span>Hanya Simulasi</span>
+                    </label>
                 </div>
                 <div className="flex items-center justify-end gap-2 px-4 py-3 border-t bg-slate-50">
                     <button

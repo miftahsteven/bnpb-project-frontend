@@ -98,10 +98,20 @@ async function fetchRambuList(opts: UseRambuCrudOptions) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const json: RambuIndexResponse = await res.json();
-    return {
-        data: Array.isArray(json.data) ? (json.data as RambuRow[]) : [],
-        total: Number(json.total ?? 0),
-    };
+    const rows = Array.isArray(json.data) ? json.data : []
+    const normalized = rows.map((r: any) => {
+        const rawSim =
+            (Array.isArray(r.RambuProps) ? r.RambuProps[0]?.isSimulation : r.RambuProps?.isSimulation) ??
+            r.isSimulation ?? 0
+        const isSimulation =
+            rawSim === true ? 1 : rawSim === '1' ? 1 : rawSim === 'true' ? 1 : Number(rawSim) === 1 ? 1 : 0
+        return { ...r, isSimulation }
+    })
+    return { data: normalized, total: Number(json.total ?? 0) }
+    // return {
+    //     data: Array.isArray(json.data) ? (json.data as RambuRow[]) : [],
+    //     total: Number(json.total ?? 0),
+    // };
 }
 
 export function useRambuCrud(

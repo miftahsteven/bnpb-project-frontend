@@ -288,14 +288,16 @@ export default function RambuTable() {
                                                         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
                                                         // jika isSimulation true warnanya merah muda, jika status published hijau, jika draft abu-abu
                                                         (row as any)?.isSimulation
-                                                            ? "bg-pink-100 text-pink-800"
+                                                            ? "bg-purple-400 text-white"
                                                             : row.status === "published"
-                                                                ? "bg-green-100 text-green-800"
-                                                                : "bg-amber-100 text-amber-700",
+                                                                ? "bg-green-600 text-white"
+                                                                : row.status === "broken"
+                                                                    ? "bg-red-500 text-white"
+                                                                    : "bg-black text-white",
                                                     ].join(" ")}
                                                 >
                                                     {/* tambahkan isSimulation jika mmg simulasi, jika bukan dia buka stats */}
-                                                    {(row as any)?.isSimulation ? 'Simulasi' : row.status === "published" ? "Terbit" : "Draf"}
+                                                    {(row as any)?.isSimulation ? 'Simulasi' : row.status === "published" ? 'Published' : row.status === "draft" ? 'Draft' : 'Broken'}
                                                 </button>
                                             </td>
 

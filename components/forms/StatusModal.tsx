@@ -15,7 +15,9 @@ export default function StatusModal({ open, row, onClose, onUpdated }: Props) {
 
     const initial =
         (row as any)?.isSimulation ? 'simulation' :
-            row.status === 'published' ? 'published' : 'draft'
+            row.status === 'published' ? 'published' :
+                row.status === 'draft' ? 'draft' :
+                    'broken'
     const [status, setStatus] = useState<string>(initial)
 
     async function handleSave() {
@@ -32,7 +34,7 @@ export default function StatusModal({ open, row, onClose, onUpdated }: Props) {
             // 1) Update status via /rambu-status/:id
             const u = `${base}/api/rambu-status/${row.id}`
             const statusBody = {
-                status: status === 'simulation' ? 'draft' : status, // simulasi → status draft
+                status: status === 'simulation' ? 'draft' : status,
             }
             const res = await fetch(u, { method: 'PUT', headers, body: JSON.stringify(statusBody) })
             if (!res.ok) {
@@ -83,6 +85,7 @@ export default function StatusModal({ open, row, onClose, onUpdated }: Props) {
                             <option value="simulation">Simulasi</option>
                             <option value="draft">Draft</option>
                             <option value="published">Published</option>
+                            <option value="broken">Broken</option>
                         </select>
                     </label>
                     {err && <div className="text-xs text-red-600">{err}</div>}
