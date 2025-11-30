@@ -22,6 +22,9 @@ type Detail = {
     status?: string | null
     isSimulation?: number
     photos?: { id: number; url: string; type: number }[]
+    model?: string | null
+    costsource?: string | null
+    year?: number | null
     createdAt?: string
 }
 
@@ -69,6 +72,25 @@ export default function RambuDetail({ open, id, onClose }: Props) {
             <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-4 py-3 border-b">
                     <h3 className="text-base font-semibold text-slate-800">Detail Rambu #{id}</h3>
+                    <span className="flex-1 mx-4 border-t border-slate-200">
+                        {
+                            detail?.isSimulation === 1 ? (
+                                <span className="inline-block px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                                    Simulasi
+                                </span>
+                            ) : (
+                                detail?.status === 'draft' ? (
+                                    <span className="inline-block px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                                        Draf
+                                    </span>
+                                ) : (
+                                    <span className="inline-block px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                                        Terbit
+                                    </span>
+                                )
+                            )
+                        }
+                    </span>
                     <button onClick={onClose} className="p-2 rounded hover:bg-slate-100" aria-label="Tutup">✕</button>
                 </div>
                 <div className="p-4 space-y-3 text-sm">
@@ -110,9 +132,17 @@ export default function RambuDetail({ open, id, onClose }: Props) {
                                     </div>
                                 </div>
                                 <div>
-                                    <div className="text-xs text-slate-500">Status</div>
+                                    <div className="text-xs text-slate-500">Model</div>
+                                    <div className="font-medium">{detail.model || '-'}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-slate-500">Sumber Biaya</div>
+                                    <div className="font-medium">{detail.costsource || '-'}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-slate-500">Tahun</div>
                                     <div className="font-medium">
-                                        {detail.isSimulation ? 'Simulasi' : detail.status === 'published' ? 'Published' : 'Draft'}
+                                        {detail.year != null ? detail.year : '-'}
                                     </div>
                                 </div>
                             </div>
