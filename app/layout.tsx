@@ -5,6 +5,8 @@ import "./globals.css";
 import LoginModalLayer from "@/components/auth/LoginModalLayer";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { UIProvider, useUI } from "@/hooks/useUI";
+import Providers from './providers'
+
 
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -14,10 +16,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <html lang="id">
             <body className="min-h-screen h-screen w-screen overflow-hidden">
                 <AuthProvider>
-                    <UIProvider>
-                        {children}
-                        <LoginModalLayer />
-                    </UIProvider>
+                    <Providers>
+                        <UIProvider>
+                            {children}
+                            <LoginModalLayer />
+                        </UIProvider>
+                    </Providers>
                 </AuthProvider>
             </body>
         </html>

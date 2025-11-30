@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@tanstack/react-query": "^5.90.11",
     "@tanstack/react-table": "^8.21.3",
     "@turf/turf": "latest",
     "axios": "^1.13.2",

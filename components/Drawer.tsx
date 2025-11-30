@@ -47,7 +47,7 @@ export default function Drawer() {
                             <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/rambu">Data Rambu</Link>
                         )}
                         {/* <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/impor">Impor Excel</Link> */}
-                        <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/simulasi">Simulasi</Link>
+                        {/* <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/simulasi">Simulasi</Link> */}
                         <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/tsunami">Peta Tsunami</Link>
                         {user && (
                             <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/users">
