@@ -42,6 +42,16 @@ export default function Drawer() {
                 )}
             >
                 <div className="h-12" />
+                {/* letakan logo BNPB disini */}
+                <div className="p-4 border-b border-gray-200">
+                    <Link href="/">
+                        <img src="/images/logo_BNPB.png" alt="BNPB Logo" className="h-8 mx-auto" />
+                        {/* tambah keterangan nama sisten "Manajemen Rambu Bencana" */}
+                        <div className="text-center text-sm font-semibold text-gray-700 mt-1">
+                            Manajemen Rambu Bencana
+                        </div>
+                    </Link>
+                </div>
                 <div className="p-4 space-y-3">
                     <h2 className="font-semibold">Rambu Bencana</h2>
                     <nav className="space-y-1 text-sm">
