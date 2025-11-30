@@ -17,6 +17,7 @@ interface UseRambuCrudOptions {
     district_id?: number;
     subdistrict_id?: number;
     isSimulation?: number;
+    satkerId?: number;
 }
 
 const API_BASE =
@@ -39,6 +40,25 @@ function buildQueryKey(opts: UseRambuCrudOptions) {
         isSimulation,
     } = opts;
 
+    // Ambil auth untuk role & satker_id
+    let role: number | null = null;
+    let userSatkerId: number | null = null;
+    let token: string | null = null;
+    let userId: number | null = null;
+
+    if (typeof window !== 'undefined') {
+        try {
+            const authRaw = localStorage.getItem('auth');
+            if (authRaw) {
+                const parsed = JSON.parse(authRaw);
+                token = parsed?.token ?? null;
+                userId = parsed?.id ?? parsed?.userId ?? null;
+                role = parsed?.role != null ? Number(parsed.role) : null;
+                userSatkerId = parsed?.satker_id != null ? Number(parsed.satker_id) : null;
+            }
+        } catch { /* ignore */ }
+    }
+
     return [
         "rambu-list",
         {
@@ -53,6 +73,8 @@ function buildQueryKey(opts: UseRambuCrudOptions) {
             district_id: district_id ?? null,
             subdistrict_id: subdistrict_id ?? null,
             isSimulation: isSimulation ?? null,
+            token: token ?? null,
+            userId: userId ?? null,
         },
     ] as const;
 }
@@ -87,11 +109,10 @@ async function fetchRambuList(opts: UseRambuCrudOptions) {
     if (subdistrict_id != null) params.append("subdistrict_id", String(subdistrict_id));
     if (isSimulation !== undefined) params.append("isSimulation", String(isSimulation));
 
-    const url = `${API_BASE}/api/rambu-crud?${params.toString()}`;
-
     const auth = typeof window !== "undefined" ? localStorage.getItem("auth") : null;
     const token = auth ? JSON.parse(auth).token : null;
 
+    const url = `${API_BASE}/api/rambu-crud?${params.toString()}`;
     const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });

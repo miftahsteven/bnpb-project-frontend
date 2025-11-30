@@ -3,6 +3,8 @@
 import { useState } from 'react'
 //import { useAuth } from '@/app/AuthContext'
 import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query'
+
 type LoginModalProps = {
     open?: boolean;
     onClose?: () => void;
@@ -17,6 +19,7 @@ export default function LoginModal({
     const [password, setPass] = useState("")
     const [error, setError] = useState("")
     const [submitting, setSubmitting] = useState(false);
+    const qc = useQueryClient()
 
     if (!open) return null
 
@@ -40,6 +43,7 @@ export default function LoginModal({
             }
             loginFromResponse(data);
             setLoginModalOpen(false);
+            qc.clear()
             // reset form
             setUser("");
             setPass("");
