@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Eye, Pencil, Trash2, Plus, X, Map, Filter, RefreshCw } from "lucide-react";
+import { Eye, Pencil, Trash2, Plus, X, Map, Filter, RefreshCw, Download, FileSpreadsheet } from "lucide-react";
 import { useRambuCrud } from "@/hooks/useRambuCrud";
 import RambuEditForm from './forms/RambuEditForm'
 import { useQueryClient } from '@tanstack/react-query'
@@ -53,6 +53,147 @@ export default function RambuTable() {
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') || undefined : undefined
 
+    async function downloadExcel() {
+        try {
+            const base = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')
+            const auth = typeof window !== 'undefined' ? localStorage.getItem('auth') : null
+            const token = auth ? JSON.parse(auth).token : null
+
+            const pageSize = 500
+            let page = 1
+            const all: any[] = []
+            while (true) {
+                const params = new URLSearchParams()
+                Object.entries(query).forEach(([k, v]) => {
+                    if (v !== undefined && v !== null && String(v) !== '') params.append(k, String(v))
+                })
+                params.set('page', String(page))
+                params.set('pageSize', String(pageSize))
+                const url = `${base}/api/rambu-crud?${params.toString()}`
+                const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+                if (!res.ok) throw new Error(`Gagal fetch data (page ${page})`)
+                const json = await res.json()
+                const rows: any[] = Array.isArray(json.data) ? json.data : []
+                all.push(...rows)
+                if (rows.length < pageSize) break
+                page++
+            }
+
+            // Lengkapi detail Rambu (RambuProps + photos) jika kosong
+            await Promise.all(
+                all.map(async (r) => {
+                    if (!r.RambuProps || !r.photos || !r.RambuProps?.[0]?.Model || !r.RambuProps?.[0]?.CostSource) {
+                        try {
+                            const res = await fetch(`${base}/api/rambu/${r.id}`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+                            if (res.ok) {
+                                const detailJson = await res.json()
+                                const payload = detailJson?.data ?? detailJson
+                                if (payload?.RambuProps) r.RambuProps = payload.RambuProps
+                                if (payload?.photos) r.photos = payload.photos
+                            }
+                        } catch { /* ignore */ }
+                    }
+                    if (!r.RambuProps || !r.photos) {
+                        try {
+                            const detailRes = await fetch(`${base}/api/rambu/${r.id}`, {
+                                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                            })
+                            if (detailRes.ok) {
+                                const detailJson = await detailRes.json()
+                                const payload = detailJson.data || detailJson
+                                if (payload?.RambuProps) r.RambuProps = payload.RambuProps
+                                if (payload?.photos) r.photos = payload.photos
+                            }
+                        } catch { /* abaikan */ }
+                    }
+                })
+            )
+
+            const XLSX = await import('xlsx')
+
+            function rp(r: any) {
+                const raw = Array.isArray(r.RambuProps) ? r.RambuProps[0] : r.RambuProps
+                return raw || {}
+            }
+
+            function normSim(r: any) {
+                const raw =
+                    (Array.isArray(r.RambuProps) ? r.RambuProps[0]?.isSimulation : r.RambuProps?.isSimulation) ??
+                    r.isSimulation ?? 0
+                return raw === true || raw === '1' || raw === 'true' || Number(raw) === 1 ? 1 : 0
+            }
+
+            function getModel(r: any) {
+                const props = rp(r)
+                const rel = props?.Model?.name ?? props?.Model?.title ?? props?.Model?.id
+                const fromProps = props?.modelName ?? props?.model_title ?? props?.model
+                const fromRoot = r.modelName ?? r.model_title ?? r.model
+                return rel ?? fromProps ?? fromRoot ?? ''
+            }
+            function getYear(r: any) {
+                const props = rp(r)
+                return props?.year ?? r.year ?? ''
+            }
+            function getCostSource(r: any) {
+                const props = rp(r)
+                const rel = props?.CostSource?.name ?? props?.CostSource?.title ?? props?.CostSource?.id
+                const fromProps = props?.costsourceName ?? props?.costsource_title ?? props?.costsource
+                const fromRoot = r.costsourceName ?? r.costsource_title ?? r.costsource
+                return rel ?? fromProps ?? fromRoot ?? ''
+            }
+            function num(n: any) {
+                const v = Number(n)
+                return Number.isFinite(v) ? v : undefined
+            }
+
+            function getLat(r: any) {
+                const props = rp(r)
+                return num(r.lat) ?? num(r.latitude) ?? num(props.lat) ?? num(props.latitude) ?? ''
+            }
+
+            function getLng(r: any) {
+                const props = rp(r)
+                return num(r.lng) ?? num(r.lon) ?? num(r.longitude) ?? num(props.lng) ?? num(props.lon) ?? num(props.longitude) ?? ''
+            }
+
+            function firstPhotoUrl(r: any) {
+                const baseApi = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')
+                const p = r.photos?.[0]?.url ?? rp(r)?.photos?.[0]?.url
+                if (!p) return ''
+                return /^https?:\/\//i.test(p) ? p : `${baseApi}${p.startsWith('/') ? '' : '/'}${p}`
+            }
+
+            const sheetRows = all.map(r => ({
+                category: r.categoryName ?? r.category ?? '',
+                deskripsi: r.description ?? r.alamat ?? r.address ?? '',
+                latitude: getLat(r),
+                longitude: getLng(r),
+                model: getModel(r),
+                year: getYear(r),
+                costsource: getCostSource(r),
+                link_photo: firstPhotoUrl(r),
+                status: normSim(r) === 1 ? 'simulation' : (r.status ?? ''),
+            }))
+
+            const ws = XLSX.utils.json_to_sheet(sheetRows, {
+                header: ['category', 'deskripsi', 'latitude', 'longitude', 'model', 'year', 'costsource', 'link_photo', 'status']
+            })
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Rambu')
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+            const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `rambu_export_${Date.now()}.xlsx`
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+            URL.revokeObjectURL(url)
+        } catch (e: any) {
+            alert(e?.message || 'Gagal membuat file Excel')
+        }
+    }
 
     const totalPages = useMemo(
         () => Math.max(1, Math.ceil(total / (query.pageSize || 20))),
@@ -163,6 +304,15 @@ export default function RambuTable() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {/* buatkan button untuk mendownload file rekapan rambu sesuai filter*/}
+                        <button
+                            onClick={downloadExcel}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                            title="Export Excel (terfilter)"
+                        >
+                            <FileSpreadsheet size={16} />
+                            Download Data
+                        </button>
                         {/* buatkan reset button */}
                         <button
                             onClick={resetFilters}

@@ -943,10 +943,7 @@ export default function FullMap() {
                     const coord = (f.geometry as any).coordinates as [number, number];
                     new maplibregl.Popup({ offset: 12 })
                         .setLngLat(coord)
-                        .setHTML(`
-                 <div style="margin-bottom:6px;font-size:14px;font-weight:600;color:#222; bg-color:#f59e0b; width:fit-content; padding:2px 6px; border-radius:4px;">
-                 ${p.status} ${p.isSimulation == 1 ? '- simulasi' : ''}
-                 </div>
+                        .setHTML(`                 
                   <div style="min-width:220px">
                     <div style="font-weight:600;margin-bottom:4px">${p.name ?? "Rambu"}</div>
                     ${p.description ? `<div style="font-size:12px;color:#555">${p.description}</div>` : ""}
