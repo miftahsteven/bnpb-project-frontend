@@ -24,18 +24,101 @@ export type Rambu = {
     district_id?: number | null;
     subdistrict_id?: number | null;
     jmlUnit?: number | null;
+    rambuProps?: {
+        id: number;
+        model?: string | null;
+        costsource?: string | null;
+        year?: number | null;
+    } | null;
+    model?: string | null;
+    costsource?: string | null;
+    year?: number | null;
+    status?: string | null;
+    isSimulation?: number | null;
 }
 
-export function toGeoJSON(items?: Rambu[]) {
+// export function toGeoJSON(items?: Rambu[]) {
+//     return {
+//         type: 'FeatureCollection',
+//         features: (items ?? []).map((it) => ({
+//             type: 'Feature',
+//             //geometry: { type: 'Point', coordinates: [it.lng, it.lat] },
+//             geometry: { type: 'Point', coordinates: [Number(it.lng ?? it.lng), Number(it.lat)] },
+//             categoryCode: it.category?.code ?? null,
+//             properties: {
+//                 ...it,
+//                 id: it.id,
+//                 name: it.name,
+//                 description: it.description,
+//                 lat: it.lat,
+//                 lng: it.lng,
+//                 disasterTypeId: it.disasterTypeId,
+//                 image: it.image,
+//                 categoryId: it.categoryId,
+//                 category: it.category,
+//                 disasterType: it.disasterType,
+//                 prov_id: it.prov_id,
+//                 city_id: it.city_id,
+//                 district_id: it.district_id,
+//                 subdistrict_id: it.subdistrict_id,
+//                 jmlUnit: it.jmlUnit,
+//                 model: it.model,
+//                 costsource: it.costsource,
+//                 year: it.year,
+//                 status: it.status,
+//                 isSimulation: it.isSimulation,
+//             },
+//         })),
+//     }
+// }
+
+export function toGeoJSON(rows: any[]) {
     return {
         type: 'FeatureCollection',
-        features: (items ?? []).map((it) => ({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [it.lng, it.lat] },
-            categoryCode: it.category?.code ?? null,
-            properties: { ...it },
-        })),
+        features: (rows || []).map((r) => {
+            const lng = Number(r.lng ?? r.lon)
+            const lat = Number(r.lat)
+            // Ambil isSimulation dari RambuProps atau langsung dari row
+            const rawSim =
+                (Array.isArray(r.RambuProps) ? r.RambuProps[0]?.isSimulation : r.RambuProps?.isSimulation) ??
+                r.isSimulation ??
+                0
+            const isSimulation =
+                rawSim === true ? 1 : rawSim === '1' ? 1 : rawSim === 'true' ? 1 : Number(rawSim) === 1 ? 1 : 0
+
+            const status = (r.status ?? '').toString().toLowerCase() // 'draft' | 'published' | ''
+
+            return {
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [lng, lat] },
+                properties: {
+                    id: r.id,
+                    name: r.name ?? '',
+                    description: r.description ?? r.alamat ?? r.address ?? '',
+                    image: r.photos?.[0]?.url ? toPhotoUrl(r.photos[0].url) : undefined,
+                    // pastikan properti status & isSimulation tersedia dan bertipe tepat
+                    status,
+                    isSimulation,
+                    // jika perlu, simpan disasterTypeId untuk pewarnaan lama
+                    disasterTypeId: Number(r.disasterTypeId ?? r.disaster_type_id ?? NaN),
+                    // lokasi untuk filter popup
+                    prov_id: Number(r.prov_id ?? r.provinceId ?? NaN),
+                    city_id: Number(r.city_id ?? r.cityId ?? NaN),
+                    district_id: Number(r.district_id ?? r.districtId ?? NaN),
+                    subdistrict_id: Number(r.subdistrict_id ?? r.subdistrictId ?? NaN),
+                },
+            }
+        }).filter((f) => {
+            const [lng, lat] = f.geometry.coordinates
+            return Number.isFinite(lng) && Number.isFinite(lat)
+        }),
     }
+}
+
+function toPhotoUrl(u: string) {
+    const base = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')
+    if (/^https?:\/\//i.test(u)) return u
+    return `${base}${u.startsWith('/') ? '' : '/'}${u}`
 }
 
 const fetcher = async (url: string) => {
@@ -59,6 +142,7 @@ type UseRambuOptions = {
     disasterTypeId?: number
     modelId?: number
     year?: number
+    isSimulation?: number
 }
 
 export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
@@ -83,6 +167,7 @@ export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
     addBoth('categoryId', 'category_id', opts.categoryId)
     addBoth('disasterTypeId', 'disaster_type_id', opts.disasterTypeId)
     addBoth('modelId', 'model_id', opts.modelId)
+    addBoth('isSimulation', 'is_simulation', opts.isSimulation)
 
     if (opts.year != null) {
         qs.set('year', String(opts.year))

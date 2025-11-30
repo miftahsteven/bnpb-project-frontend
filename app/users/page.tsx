@@ -9,6 +9,7 @@ export default function UsersPage() {
     const { user, loading } = useAuth();
 
     if (loading) return null;
+    if (!user) return <LoginModal />;
 
 
     return <UsersTable />;

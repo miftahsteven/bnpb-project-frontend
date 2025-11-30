@@ -18,6 +18,9 @@ export default function Drawer() {
     //     if (!user) setLoginModalOpen(true)
     // }, [user]);
 
+    //console.log('user in drawer', user?.role);
+
+
     if (loading) return null;
 
     return (
@@ -49,7 +52,7 @@ export default function Drawer() {
                         {/* <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/impor">Impor Excel</Link> */}
                         {/* <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/simulasi">Simulasi</Link> */}
                         <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/tsunami">Peta Tsunami</Link>
-                        {user && (
+                        {user && user?.role === 1 && (
                             <Link className="block px-2 py-1 rounded hover:bg-gray-100" href="/users">
                                 User Management
                             </Link>

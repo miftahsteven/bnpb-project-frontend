@@ -32,6 +32,13 @@ const COLOR_BY_DISASTER: Record<number, string> = {
     4: '#ff0a43',
 }
 
+// Warna status
+const STATUS_COLORS = {
+    simulation: '#ec4899', // pink-500
+    draft: '#f59e0b',      // amber-500
+    published: '#10b981',  // emerald-500
+} as const
+
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || 'BSMSxOeDudgubp5q2uYq'
 
 const HIGHLIGHT_COLOR = '#f97316' // oranye
@@ -373,52 +380,6 @@ export default function FullMap() {
         return out
     }
 
-    // async function fetchGeografis(lat: number, lng: number) {
-    //     setSimErr(null)
-    //     setSimLoading(true)
-    //     const seq = ++geoReqSeqRef.current
-    //     const pointCtx = { lat, lng }
-    //     const base = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, '')
-    //     // Coba GET (sesuai contoh response sebelumnya)
-    //     const urlGet = `${base}/api/ref/geografis?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`
-    //     try {
-    //         let res = await fetch(urlGet)
-    //         // Fallback POST (jaga-jaga backend pakai body)
-    //         if (!res.ok) {
-    //             res = await fetch(`${base}/api/ref/geografis`, {
-    //                 method: 'POST',
-    //                 headers: { 'Content-Type': 'application/json' },
-    //                 body: JSON.stringify({ lat, long: lng })
-    //             })
-    //         }
-    //         if (!res.ok) throw new Error(`Geografis gagal (${res.status})`)
-    //         const j = await res.json()
-    //         const g = j?.data
-    //         if (!g) throw new Error('Data geografis kosong')
-    //         const geoData = { province: g.province, city: g.city, district: g.district, village: g.village }
-    //         setSimGeo(geoData)
-    //         // Update popup langsung (hindari stuck "Memuat…")
-    //         if (geoReqSeqRef.current === seq && simPopupRef.current) {
-    //             //simPopupRef.current.setHTML(renderSimPopupContent(pointCtx, geoData, false, null))
-    //             simPopupRef.current.setHTML(
-    //                 renderSimPopupContent(pointCtx, geoData, false, null, canSimulate())
-    //             )
-    //             attachSimLinkListener()
-    //         }
-    //     } catch (e: any) {
-    //         const errMsg = e.message || 'Gagal deteksi geografis'
-    //         setSimErr(errMsg)
-    //         if (geoReqSeqRef.current === seq && simPopupRef.current) {
-    //             //simPopupRef.current.setHTML(renderSimPopupContent(pointCtx, null, false, errMsg))
-    //             simPopupRef.current.setHTML(
-    //                 renderSimPopupContent(pointCtx, null, false, errMsg, canSimulate())
-    //             )
-    //             attachSimLinkListener()
-    //         }
-    //     } finally {
-    //         setSimLoading(false)
-    //     }
-    // }
 
     async function fetchGeografis(lat: number, lng: number) {
         setSimErr(null)
@@ -619,120 +580,6 @@ export default function FullMap() {
         return null
     }
 
-    // const rambuFiltered = useMemo(() => {
-    //     if (!rambuData) return []
-    //     if (!activeProvId) return rambuData
-
-    //     console.log('data', JSON.stringify(rambuData));
-
-    //     // Awal: filter metadata berdasarkan provinceId
-    //     //const metaFiltered = rambuData.filter((r: any) => r.provinceId === activeProvId)
-    //     //let metaFiltered = rambuData.filter((r: any) => r.provinceId === activeProvId)
-    //     let metaFiltered = rambuData.filter((r: any) => {
-    //         const provVal = r.provinceId ?? r.prov_id
-    //         return Number(provVal) === Number(activeProvId)
-    //     })
-
-    //     //tambahkan filter city
-    //     if (activeCityId) {
-    //         const beforeCount = metaFiltered.length
-    //         metaFiltered = metaFiltered.filter((r: any) => {
-    //             const cVal = r.cityId ?? r.city_id
-    //             return Number(cVal) === Number(activeCityId)
-    //         })
-    //         if (beforeCount > 0 && metaFiltered.length === 0) {
-    //             console.debug('[rambuFiltered] Tidak ada rambu untuk cityId=', activeCityId, 'dalam provinsi', activeProvId)
-    //         }
-    //     }
-
-    //     const polyFC = toPolygonFeatureCollection(normalizedProvGeom)
-    //     if (!polyFC) return metaFiltered
-
-    //     try {
-    //         // Buffer ringan (≈2 km) untuk mengatasi simplifikasi / presisi koordinat
-    //         const KM_BUFFER = 2
-    //         const DEG_BUFFER = KM_BUFFER / 111 // pendekatan kasar konversi km ke derajat
-    //         const bufferedFeatures = polyFC.features.map((f: any) => {
-    //             try {
-    //                 return turf.buffer(f, DEG_BUFFER, { units: 'degrees' })
-    //             } catch {
-    //                 return f
-    //             }
-    //         })
-    //         const bufferedFC = {
-    //             type: 'FeatureCollection',
-    //             features: bufferedFeatures.filter(Boolean)
-    //         } as any
-
-    //         // Buat FeatureCollection titik (pastikan urutan [lng, lat])
-    //         const pointFeatures = (metaFiltered.length ? metaFiltered : rambuData).map((r: any) => {
-    //             const lng = Number(r.lng ?? r.lon)
-    //             const lat = Number(r.lat)
-    //             if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null
-    //             return {
-    //                 type: 'Feature',
-    //                 geometry: { type: 'Point', coordinates: [lng, lat] },
-    //                 properties: r
-    //             }
-    //         }).filter(Boolean)
-
-    //         const pointsFC = { type: 'FeatureCollection', features: pointFeatures } as any
-
-    //         // Coba cepat dengan pointsWithinPolygon (pakai buffered)
-    //         let within = []
-    //         try {
-    //             const tmp = turf.pointsWithinPolygon(pointsFC, bufferedFC)
-    //             within = tmp.features.map((f: any) => f.properties)
-    //         } catch (e) {
-    //             console.warn('[FullMap] pointsWithinPolygon error, fallback individual:', e)
-    //         }
-
-    //         // Fallback individual jika within kosong
-    //         if (within.length === 0 && pointFeatures.length) {
-    //             const polyList = bufferedFC.features
-    //             const manual: any[] = []
-    //             for (const pf of pointFeatures as PointFeature[]) {
-    //                 if (!pf?.geometry?.coordinates ||
-    //                     pf.geometry.type !== 'Point' ||
-    //                     pf.geometry.coordinates.length < 2) {
-    //                     continue
-    //                 }
-    //                 const coord = pf.geometry.coordinates as [number, number]
-    //                 let inside = false
-    //                 for (const poly of polyList) {
-    //                     try {
-    //                         if (turf.booleanPointInPolygon(coord, poly.geometry)) {
-    //                             inside = true
-    //                             break
-    //                         }
-    //                     } catch { /* ignore */ }
-    //                 }
-    //                 if (inside) manual.push(pf.properties)
-    //             }
-    //             if (manual.length) within = manual
-    //         }
-
-    //         // Jika hasil spatial kosong tetapi meta ada → kembalikan metaFiltered (jangan hilang)
-    //         if (within.length === 0 && metaFiltered.length > 0) {
-    //             console.warn('[FullMap][SpatialMiss] gunakan metaFiltered. activeProvId=', activeProvId,
-    //                 'metaCount=', metaFiltered.length)
-    //             return metaFiltered
-    //         }
-
-    //         // Gabung (hindari duplikat)
-    //         if (within.length && metaFiltered.length && within.length !== metaFiltered.length) {
-    //             const byId: Record<string | number, any> = {}
-    //             for (const m of metaFiltered) byId[m.id] = m
-    //             for (const s of within) byId[s.id] = s
-    //             return Object.values(byId)
-    //         }
-
-    //         return within.length ? within : metaFiltered
-    //     } catch (e) {
-    //         console.warn('[FullMap] Spatial filter gagal total, fallback meta:', e)
-    //         return metaFiltered
-    //     }
-    // }, [rambuData, activeProvId, activeCityId, normalizedProvGeom])
 
     const rambuFiltered = useMemo(() => {
         // Tidak ada data → kosong
@@ -953,8 +800,24 @@ export default function FullMap() {
                         type: "geojson",
                         data: rambuFC as any,
                         cluster: true,
-                        clusterMaxZoom: 11,
-                        clusterRadius: 40,
+                        clusterMaxZoom: 18, //11,14
+                        clusterRadius: 20, //40, 20 
+                        // Agregasi status dalam cluster
+                        clusterProperties: {
+                            simCount: [
+                                '+',
+                                //['case', ['==', ['get', 'isSimulation'], 1], 1, 0],
+                                ['case', ['==', ['to-number', ['coalesce', ['get', 'isSimulation'], 0]], 1], 1, 0],
+                            ],
+                            publishedCount: [
+                                '+',
+                                ['case', ['==', ['get', 'status'], 'published'], 1, 0],
+                            ],
+                            draftCount: [
+                                '+',
+                                ['case', ['==', ['get', 'status'], 'draft'], 1, 0],
+                            ],
+                        },
                     });
                 }
 
@@ -965,14 +828,31 @@ export default function FullMap() {
                         source: "rambu",
                         filter: ["has", "point_count"],
                         paint: {
+                            // "circle-color": [
+                            //     "step",
+                            //     ["get", "point_count"],
+                            //     "#f59e0b",  //diganti
+                            //     20, "#42a5f5",
+                            //     50, "#1e88e5",
+                            //     100, BRAND_BLUE
+                            // ],
+                            // "circle-radius": ["step", ["get", "point_count"], 14, 20, 18, 50, 24, 100, 32],
+                            // Warna cluster = status dominan dalam cluster
                             "circle-color": [
-                                "step",
-                                ["get", "point_count"],
-                                "#fa053e",  //diganti
-                                20, "#42a5f5",
-                                50, "#1e88e5",
-                                100, BRAND_BLUE
+                                "case",
+                                // sim dominan
+                                ["all",
+                                    [">=", ["coalesce", ["get", "simCount"], 0], ["coalesce", ["get", "publishedCount"], 0]],
+                                    [">=", ["coalesce", ["get", "simCount"], 0], ["coalesce", ["get", "draftCount"], 0]]
+                                ],
+                                STATUS_COLORS.simulation,
+                                // published dominan
+                                [">=", ["coalesce", ["get", "publishedCount"], 0], ["coalesce", ["get", "draftCount"], 0]],
+                                STATUS_COLORS.published,
+                                // else → draft
+                                STATUS_COLORS.draft
                             ],
+                            // Radius tetap berdasarkan jumlah titik
                             "circle-radius": ["step", ["get", "point_count"], 14, 20, 18, 50, 24, 100, 32],
                             "circle-stroke-width": 1,
                             "circle-stroke-color": "#fff",
@@ -1002,22 +882,31 @@ export default function FullMap() {
                         source: "rambu",
                         filter: ["!", ["has", "point_count"]],
                         paint: {
+                            // "circle-color": [
+                            //     "coalesce",
+                            //     [
+                            //         "case",
+                            //         ["==", ["typeof", ["get", "disasterTypeId"]], "number"],
+                            //         [
+                            //             "match",
+                            //             ["get", "disasterTypeId"],
+                            //             1, COLOR_BY_DISASTER[1],
+                            //             2, COLOR_BY_DISASTER[2],
+                            //             3, COLOR_BY_DISASTER[3],
+                            //             4, COLOR_BY_DISASTER[4],
+                            //             DEFAULT_COLOR
+                            //         ],
+                            //         DEFAULT_COLOR
+                            //     ],
+                            //     DEFAULT_COLOR
+                            // ],
+                            // Warna titik tunggal berdasarkan status
                             "circle-color": [
-                                "coalesce",
-                                [
-                                    "case",
-                                    ["==", ["typeof", ["get", "disasterTypeId"]], "number"],
-                                    [
-                                        "match",
-                                        ["get", "disasterTypeId"],
-                                        1, COLOR_BY_DISASTER[1],
-                                        2, COLOR_BY_DISASTER[2],
-                                        3, COLOR_BY_DISASTER[3],
-                                        4, COLOR_BY_DISASTER[4],
-                                        DEFAULT_COLOR
-                                    ],
-                                    DEFAULT_COLOR
-                                ],
+                                "case",
+                                //["==", ["get", "isSimulation"], 1], STATUS_COLORS.simulation,
+                                ["==", ["to-number", ["coalesce", ["get", "isSimulation"], 0]], 1], STATUS_COLORS.simulation,
+                                ["==", ["get", "status"], "published"], STATUS_COLORS.published,
+                                ["==", ["get", "status"], "draft"], STATUS_COLORS.draft,
                                 DEFAULT_COLOR
                             ],
                             "circle-radius": 7,

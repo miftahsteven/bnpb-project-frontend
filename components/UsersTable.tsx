@@ -140,6 +140,7 @@ export default function UsersTable() {
                 <table className="w-full table-auto text-sm">
                     <thead className="bg-gray-50">
                         <tr>
+                            <th className="p-3 text-left">No</th>
                             <th className="p-3 text-left">Nama</th>
                             <th className="p-3 text-left">Username</th>
                             <th className="p-3 text-left">Role</th>
@@ -165,6 +166,9 @@ export default function UsersTable() {
                         ) : (
                             users?.map((u) => (
                                 <tr key={u.id} className="border-t">
+                                    <td className="p-3">
+                                        {(page - 1) * pageSize + users.indexOf(u) + 1}
+                                    </td>
                                     <td className="p-3">{u.name}</td>
                                     <td className="p-3">{u.username}</td>
 
