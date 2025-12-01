@@ -43,7 +43,7 @@ export default function LoginModal({
             }
             loginFromResponse(data);
             setLoginModalOpen(false);
-            qc.clear()
+            //qc.clear()
             await qc.invalidateQueries({ queryKey: ['rambu-list'] })
             // reset form
             setUser("");
