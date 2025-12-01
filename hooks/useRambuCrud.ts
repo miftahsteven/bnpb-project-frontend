@@ -48,10 +48,12 @@ function buildQueryKey(opts: UseRambuCrudOptions) {
 
     if (typeof window !== 'undefined') {
         try {
-            const authRaw = localStorage.getItem('auth');
+            const authRaw = typeof window !== 'undefined' ? localStorage.getItem('auth') : null //localStorage.getItem('auth');
+            let token: string | null = null
             if (authRaw) {
                 const parsed = JSON.parse(authRaw);
-                token = parsed?.token ?? null;
+                //token = parsed?.token ?? null;
+                token = JSON.parse(authRaw)?.token ?? null
                 userId = parsed?.id ?? parsed?.userId ?? null;
                 role = parsed?.role != null ? Number(parsed.role) : null;
                 userSatkerId = parsed?.satker_id != null ? Number(parsed.satker_id) : null;
@@ -75,11 +77,13 @@ function buildQueryKey(opts: UseRambuCrudOptions) {
             isSimulation: isSimulation ?? null,
             token: token ?? null,
             userId: userId ?? null,
+
         },
     ] as const;
 }
 
 async function fetchRambuList(opts: UseRambuCrudOptions) {
+
     const {
         page = 1,
         pageSize = 20,
