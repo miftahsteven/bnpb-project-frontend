@@ -228,13 +228,23 @@ export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
             }
 
             // Strategi: coba publik dulu, jika gagal dan ada token → ulang dengan token.
+            // if (preferPublic) {
+            //     let res = await fetch(absUrl, { headers })
+            //     if ((res.status === 401 || res.status === 403) && bearerToken) {
+            //         res = await fetch(absUrl, { headers: { ...headers, Authorization: `Bearer ${bearerToken}` } })
+            //     }
+            //     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
+            //     return parseJson(res)
+            // }
+            //buat return json data Rambu tidak menggunakan bearer token, karena data /api/rambu bersifat publik    
             if (preferPublic) {
                 let res = await fetch(absUrl, { headers })
+                if (res.ok) return parseJson(res)
                 if ((res.status === 401 || res.status === 403) && bearerToken) {
                     res = await fetch(absUrl, { headers: { ...headers, Authorization: `Bearer ${bearerToken}` } })
+                    if (res.ok) return parseJson(res)
                 }
-                if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
-                return parseJson(res)
+                throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
             }
 
             // Jika preferPublic=false: coba token dulu, lalu fallback publik.
@@ -249,8 +259,8 @@ export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
             return parseJson(res)
         },
         {
-        revalidateOnFocus: false,
-    })
+            revalidateOnFocus: false,
+        })
 
     return {
         data: swr.data,
