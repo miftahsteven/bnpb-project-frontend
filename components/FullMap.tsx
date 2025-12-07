@@ -206,7 +206,7 @@ export default function FullMap() {
     // data
     const { data: provinces } = useProvinces()
 
-    const { data: rambuData, loading: loadingRambu, error: rambuErr } = useRambu(
+    const { data: rambuData, loading: loadingRambu, error: rambuErr, mutate: refreshRambu } = useRambu(
         activeProvId,
         {
             // paksa ambil semua rambu saat load awal (server tidak difilter), filter dilakukan di klien

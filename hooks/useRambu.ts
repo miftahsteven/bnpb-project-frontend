@@ -218,8 +218,12 @@ export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
         enabled && path ? path : null,
         async (url: string) => {
             const base = process.env.NEXT_PUBLIC_API_BASE || API_BASE || ''
-            // Safe join untuk hindari /api/api/...
-            const absUrl = new URL(url, base).toString()
+            const primary = new URL(url, base).toString() // hindari /api/api/...
+            const originFallback = (() => {
+                if (typeof window === 'undefined') return null
+                try { return new URL(url, window.location.origin).toString() } catch { return null }
+            })()
+            const candidates = [primary, originFallback].filter(Boolean) as string[]
             const headers: Record<string, string> = { Accept: 'application/json' }
 
             const parseJson = async (res: Response) => {
@@ -227,36 +231,39 @@ export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
                 return Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : []
             }
 
-            // Strategi: coba publik dulu, jika gagal dan ada token → ulang dengan token.
-            // if (preferPublic) {
-            //     let res = await fetch(absUrl, { headers })
-            //     if ((res.status === 401 || res.status === 403) && bearerToken) {
-            //         res = await fetch(absUrl, { headers: { ...headers, Authorization: `Bearer ${bearerToken}` } })
-            //     }
-            //     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
-            //     return parseJson(res)
-            // }
-            //buat return json data Rambu tidak menggunakan bearer token, karena data /api/rambu bersifat publik    
-            if (preferPublic) {
-                let res = await fetch(absUrl, { headers })
-                if (res.ok) return parseJson(res)
-                if ((res.status === 401 || res.status === 403) && bearerToken) {
-                    res = await fetch(absUrl, { headers: { ...headers, Authorization: `Bearer ${bearerToken}` } })
+            const tryFetch = async (target: string) => {
+                if (preferPublic) {
+                    let res = await fetch(target, { headers })
                     if (res.ok) return parseJson(res)
+                    if ((res.status === 401 || res.status === 403) && bearerToken) {
+                        res = await fetch(target, { headers: { ...headers, Authorization: `Bearer ${bearerToken}` } })
+                        if (res.ok) return parseJson(res)
+                    }
+                    return null
                 }
-                throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
-            }
 
-            // Jika preferPublic=false: coba token dulu, lalu fallback publik.
-            if (bearerToken) {
-                const res = await fetch(absUrl, { headers: { ...headers, Authorization: `Bearer ${bearerToken}` } })
+                if (bearerToken) {
+                    let res = await fetch(target, { headers: { ...headers, Authorization: `Bearer ${bearerToken}` } })
+                    if (res.ok) return parseJson(res)
+                    if (res.status !== 401 && res.status !== 403) {
+                        throw new Error(`HTTP ${res.status} ${res.statusText} (${target})`)
+                    }
+                }
+                const res = await fetch(target, { headers })
                 if (res.ok) return parseJson(res)
-                if (res.status !== 401 && res.status !== 403) throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
+                return null
             }
 
-            const res = await fetch(absUrl, { headers })
-            if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
-            return parseJson(res)
+            let lastErr: Error | null = null
+            for (const target of candidates) {
+                try {
+                    const data = await tryFetch(target)
+                    if (data) return data
+                } catch (e: any) {
+                    lastErr = e instanceof Error ? e : new Error(String(e))
+                }
+            }
+            throw lastErr || new Error('Gagal memuat rambu dari semua sumber')
         },
         {
             revalidateOnFocus: false,
