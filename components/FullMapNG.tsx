@@ -209,11 +209,9 @@ export default function FullMap() {
     const { data: rambuData, loading: loadingRambu, error: rambuErr } = useRambu(
         activeProvId,
         {
-            // paksa ambil semua rambu saat load awal (server tidak difilter), filter dilakukan di klien
-            forceAll: true,
+            // biarkan backend memfilter berdasar provinsi + kota jika dipilih
+            forceAll: false,
             fetchAllWhenUndefined: true,
-            bearerToken: token,
-            preferPublic: true, // tampilkan walau belum login
             cityId: activeCityId, // fokus: filter kota
             // siap jika nanti ingin tambahkan filter lain:
             districtId: activeDistrictId,

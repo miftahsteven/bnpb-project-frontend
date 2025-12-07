@@ -134,6 +134,8 @@ type UseRambuOptions = {
     enabled?: boolean
     fetchAllWhenUndefined?: boolean
     forceAll?: boolean // jika true selalu ambil semua meski provinceId ada (untuk filter di klien)
+    bearerToken?: string | null // optional: kirim token agar bisa akses endpoint yang butuh auth
+    preferPublic?: boolean // default true: coba tanpa token dulu supaya bisa tampil walau belum login
     // OPTIONAL FILTERS (server-side)
     cityId?: number
     districtId?: number
@@ -149,6 +151,8 @@ export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
     const enabled = opts.enabled ?? true
     const fetchAll = opts.fetchAllWhenUndefined ?? true
     const forceAll = opts.forceAll ?? false
+    const preferPublic = opts.preferPublic ?? true
+    const bearerToken = opts.bearerToken
 
     console.log('useRambu', { provinceId, enabled, fetchAll, forceAll });
 
@@ -210,7 +214,41 @@ export function useRambu(provinceId?: number, opts: UseRambuOptions = {}) {
         const absUrl = path.startsWith('http') ? path : `${BASE}${path.startsWith('/') ? '' : '/'}${path}`
         console.debug('[useRambu] GET:', absUrl)
     }
-    const swr = useSWR<Rambu[]>(enabled && path ? path : null, fetcher, {
+    const swr = useSWR<Rambu[]>(
+        enabled && path ? path : null,
+        async (url: string) => {
+            const base = process.env.NEXT_PUBLIC_API_BASE || API_BASE || ''
+            // Safe join untuk hindari /api/api/...
+            const absUrl = new URL(url, base).toString()
+            const headers: Record<string, string> = { Accept: 'application/json' }
+
+            const parseJson = async (res: Response) => {
+                const json = await res.json()
+                return Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : []
+            }
+
+            // Strategi: coba publik dulu, jika gagal dan ada token → ulang dengan token.
+            if (preferPublic) {
+                let res = await fetch(absUrl, { headers })
+                if ((res.status === 401 || res.status === 403) && bearerToken) {
+                    res = await fetch(absUrl, { headers: { ...headers, Authorization: `Bearer ${bearerToken}` } })
+                }
+                if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
+                return parseJson(res)
+            }
+
+            // Jika preferPublic=false: coba token dulu, lalu fallback publik.
+            if (bearerToken) {
+                const res = await fetch(absUrl, { headers: { ...headers, Authorization: `Bearer ${bearerToken}` } })
+                if (res.ok) return parseJson(res)
+                if (res.status !== 401 && res.status !== 403) throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
+            }
+
+            const res = await fetch(absUrl, { headers })
+            if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} (${absUrl})`)
+            return parseJson(res)
+        },
+        {
         revalidateOnFocus: false,
     })
 
